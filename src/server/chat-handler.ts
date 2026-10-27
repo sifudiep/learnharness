@@ -33,6 +33,7 @@ import { providerEventNote } from "../agent/provider-events.ts";
 import { effectiveSettings, stores } from "./stores.ts";
 import { searchAvailable, searchProvider } from "./search.ts";
 import { providerKeyPresent } from "./keys.ts";
+import { CLAUDE_CODE_PROVIDER } from "../agent/claude-code-cli.ts";
 import {
 	extractionEnabled,
 	graphToolsEnabled,
@@ -217,6 +218,9 @@ export async function handleChatInput(
 			return Response.json({ error: "Background use is off for this connection. Automatic follow-up remains deferred in its queue." }, { status: 403 });
 		}
 	}
+	// The dev-only Claude Code CLI: re-check its login (TTL-cached) so a
+	// terminal `claude auth login`/logout lands before the gate reads it.
+	if (conversation.provider === CLAUDE_CODE_PROVIDER) await refreshConnectionCatalog(conversation.provider);
 	if (!providerKeyPresent(conversation.provider)) {
 		const envelope = providerKeyMissingEnvelope(conversation.provider, ["strong"]);
 		console.info(`[chat ${chatId}] turn refused — ${JSON.stringify(envelope)}`);

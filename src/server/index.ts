@@ -45,3 +45,5 @@ export * from "./observability.ts";
 export * from "./model-catalog.ts";
 export { subscriptionControlsResponse, subscriptionBrowserResponse } from "./web-subscription-http.ts";
 export { sessionCost } from "./pricing.ts";
+// The dev-only Claude Code CLI connection's status (GET /api/claude-code).
+export { refreshClaudeCodeStatus } from "../agent/claude-code-cli.ts";

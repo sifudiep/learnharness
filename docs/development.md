@@ -58,6 +58,14 @@ Sign-in opens a new tab in the browser that initiated it; permit that tab if you
 
 This remains a **trusted developer/shared-server mode**, not multi-user hosting. Subscription controls require same-origin JSON/custom-header requests; browser-opening actions are short-lived, origin-bound and one-use. These checks prevent ordinary cross-origin browser controls, **not user authentication or DNS-rebinding protection**. Do not expose an unprotected dev/server instance to untrusted users or the public Internet; a public deployment needs an independent access/host gate. Remote ChatGPT callback routing, per-user accounts and credential import are not implemented.
 
+### Claude Code CLI provider (dev only)
+
+`LH_CLAUDE_CODE_CLI=1` adds a `claude-code` provider that runs every model step through your locally installed, logged-in `claude` CLI (log in with `claude auth login` in a terminal; there is no in-app sign-in). Settings → Providers → Subscriptions shows a read-only **Claude Code CLI** row with the login state, and the picker offers `claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5` and `claude-haiku-5-5` (thinking levels low–max, mapped to `--effort`) for all three slots. Cost shows as $0 (plan-paid); tokens are still counted.
+
+**It is dev-only on purpose and must not ship in the packaged app:** Anthropic's terms do not allow a distributed third-party app to route requests through a user's Claude Pro/Max login ([legal and compliance](https://code.claude.com/docs/en/legal-and-compliance)). Without the flag, nothing about the provider exists at runtime.
+
+How it works: pi keeps the agent loop. Each step spawns `claude -p` (stream-json, built-in tools off, `--setting-sources ""`, no session persistence) in an empty temp directory with `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` removed from its environment, so it always uses the CLI's own login. The CLI starts a new turn for every stdin user message, so the chat history goes in as **one** user message holding a tagged transcript (one text block per message, images in place, earlier thinking dropped). The system prompt rides `--system-prompt-file`; LearnHarness tools are advertised by `src/agent/claude-code-mcp-stub.mjs` and never run by the CLI. The process is stopped at the first `message_stop` and the tool call goes back to pi. Code: `src/agent/claude-code-cli.ts`, `src/agent/claude-code-stream.ts`.
+
 ## Architecture
 
 Five layers, dependency arrows pointing inward only, machine-enforced as four ESLint zones (shell → barrels only; core and agent never import below themselves). Two composition roots, one writer per store. The full spec — layers, systems, runtime flows, invariants, seams: [`docs/architecture.md`](docs/architecture.md).

@@ -83,3 +83,18 @@ export interface CatalogProvider {
 	/** Whether that var is currently present (env or auth file). */
 	keyPresent: boolean;
 }
+
+/** The dev-only Claude Code CLI provider's id (LH_CLAUDE_CODE_CLI=1). */
+export const CLAUDE_CODE_PROVIDER = "claude-code";
+
+/** GET /api/claude-code — the dev-only Claude Code CLI connection's
+ *  read-only status (LH_CLAUDE_CODE_CLI=1; owner, 2026-10-27). Projected
+ *  from `claude auth status --json`; never carries the account email or
+ *  org. `error` explains a CLI that could not be run or parsed. */
+export interface ClaudeCodeStatus {
+	enabled: boolean;
+	loggedIn: boolean;
+	authMethod: string | null;
+	subscriptionType: string | null;
+	error: string | null;
+}
