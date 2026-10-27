@@ -148,6 +148,24 @@ function installFetch(routes: {
 	return calls;
 }
 
+describe("empty thinking blocks (owner, 2026-10-27)", () => {
+	const withThinking = (id: string, thinking: string, extra: unknown[] = []): LhMessage =>
+		({ ...assistantMsg(id, ""), content: [{ type: "thinking", thinking, thinkingSignature: "sig" }, ...extra] }) as LhMessage;
+
+	it("a settled thinking block without text renders no reasoning row; real thinking still does", () => {
+		const view = projectView([withThinking("a1", "", [{ type: "text", text: "Answer" }]), withThinking("a2", "  \n"), withThinking("a3", "Summary.", [{ type: "text", text: "More" }])]);
+		const reasoning = view.flatMap((m) => m.parts).filter((p) => p.type === "reasoning");
+		assert.deepEqual(reasoning.map((p) => (p as { text: string }).text), ["Summary."]);
+	});
+
+	it("a silent STREAMING message still gets its one placeholder thinking row", () => {
+		const view = projectView([withThinking("a1", "")], { inFlight: true, streamingIds: new Set(["a1"]), executions: new Map() });
+		const reasoning = view.flatMap((m) => m.parts).filter((p) => p.type === "reasoning");
+		assert.equal(reasoning.length, 1);
+		assert.equal((reasoning[0] as { text: string }).text, "");
+	});
+});
+
 describe("postInputEvent (the 409 identity-retry)", { skip: process.env.NO_SLOW ? true : undefined }, () => {
 	it("the model's default fetch is RECEIVER-SAFE (the browser 'Illegal invocation' pin)", async () => {
 		// The live empty-session bug (2026-09-26): storing globalThis.fetch

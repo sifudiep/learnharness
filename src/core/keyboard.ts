@@ -14,7 +14,8 @@
  *   only) merged over DEFAULT_BINDINGS — the settings wave adds the editor.
  *
  * Binding strings are normalized, cross-platform:
- *   "mod+d"    — mod = ⌘ on macOS, Ctrl elsewhere (both are accepted live)
+ *   "mod+k"    — mod = ⌘ on macOS, Ctrl elsewhere (both are accepted live)
+ *   "alt+d"    — alt = ⌥ on macOS; letters/digits match the PHYSICAL key
  *   "shift+tab", "alt+arrowdown", "mod+shift+f", "?", "f2", "escape"
  * Order is fixed: mod, alt, shift, then the key.
  */
@@ -55,7 +56,7 @@ export interface KeyActionDef {
 }
 
 export const KEYBOARD_ACTIONS: readonly KeyActionDef[] = [
-	{ id: "toggle-dictation", label: "Toggle dictation", scope: "global", binding: "mod+d" },
+	{ id: "toggle-dictation", label: "Toggle dictation", scope: "global", binding: "alt+d" },
 	{ id: "open-settings", label: "Open settings", scope: "global", binding: "mod+," },
 	{ id: "open-model-picker", label: "Model selector", scope: "global", binding: "mod+k" },
 	{ id: "cycle-thinking", label: "Cycle thinking level", scope: "global", binding: "shift+tab" },
@@ -147,6 +148,9 @@ export function bindingForAction(id: KeyAction): string {
  * Normalize a KeyboardEvent to a canonical binding string. Rules:
  * - mod matches BOTH meta (⌘) and ctrl — Ctrl+K works on a Mac keyboard too.
  * - a printable key ("?") bakes its shift in: "shift+/?" collapses to "?".
+ * - with alt held, a letter/digit is read from the PHYSICAL key (e.code):
+ *   macOS Option composes a character (⌥D types "∂"), which would never
+ *   match "alt+d" (dictation moved to ⌥D, owner 2026-10-27).
  */
 export function eventBinding(e: KeyboardEvent): string {
 	const mod = e.metaKey || e.ctrlKey;
@@ -159,7 +163,8 @@ export function eventBinding(e: KeyboardEvent): string {
 	if (mod) mods.push("mod");
 	if (e.altKey) mods.push("alt");
 	if (e.shiftKey) mods.push("shift");
-	return [...mods, e.key.toLowerCase()].join("+");
+	const physical = e.altKey ? /^(?:Key|Digit)([A-Z\d])$/.exec(e.code ?? "")?.[1] : undefined;
+	return [...mods, (physical ?? e.key).toLowerCase()].join("+");
 }
 
 /** The window event name a registry action dispatches/answers on —

@@ -223,6 +223,10 @@ export function projectView(messages: readonly LhMessage[], live?: LiveTurnState
 				if (block.type === "text") {
 					rest.push({ type: "text", id: `${m.id}-t${textN++}`, text: block.text, state: "done" });
 				} else if (block.type === "thinking") {
+					// A thinking block with no text (an "omitted" display, a redacted
+					// block) would render as an empty row (owner, 2026-10-27). A silent
+					// STREAMING message still gets its thinking row below.
+					if (!block.thinking.trim()) continue;
 					reasoning.push({ type: "reasoning", id: `${m.id}-r${reasoningN++}`, text: block.thinking, state: "done" });
 				} else if (block.type === "toolCall") {
 					const part = toolPartOf(block, live, streamingMessage);

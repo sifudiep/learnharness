@@ -256,7 +256,7 @@ export type Dictation = {
 	/** Not idle — from the click until the stop completes (the optimistic window). */
 	active: boolean;
 	/** End + KEEP the transcript: flush the deferred buffer into the primary
-	 *  input (the Stop pill and ⌘D). */
+	 *  input (the Stop pill and ⌥D). */
 	toggle: () => void;
 	stop: () => void;
 	/** FINISH, THEN CONTINUE (owner, 2026-10-01 "nothing gets lost" round):
@@ -580,7 +580,7 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 		// "stopping" presses are ignored — the flush is in flight.
 	}, [phase, start, stop]);
 
-	// Shortcut seams (keyboard wave A): ⌘D toggles from anywhere on the
+	// Shortcut seams (keyboard wave A): ⌥D toggles from anywhere on the
 	// page; the Esc chain lands here as a CANCEL (owner, round 3). Each
 	// page owns ONE hook instance, and only the mounted page's listener is
 	// attached.
@@ -677,7 +677,7 @@ export function DictationBar({ dictation }: { dictation: Dictation }) {
 				// Errored: the button span truncates the line — the tooltip is its
 				// full reveal (the keyless line KEEPS "Deepgram" — owner overrule:
 				// it's the Keys row label, the truth the user needs). Otherwise the
-				// quiet label + the live ⌘D binding.
+				// quiet label + the live ⌥D binding.
 				label={error ?? "Dictate"}
 				action={error ? undefined : "toggle-dictation"}
 				side="top"

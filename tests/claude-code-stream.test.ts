@@ -6,7 +6,7 @@ import { after, before, test } from "node:test";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { normalizeContext, type Api, type AssistantMessageEvent, type Message, type Model, type Tool } from "@earendil-works/pi-ai";
 import { claudeCodeModel } from "../src/agent/claude-code-cli.ts";
-import { TRANSCRIPT_INSTRUCTION, claudeCodeArgs, claudeCodeStream, neutralizeTags, renderTranscript, type ClaudeCodeSpawn } from "../src/agent/claude-code-stream.ts";
+import { TRANSCRIPT_INSTRUCTION, claudeCodeArgs, claudeCodeStream, neutralizeTags, renderTranscript, resetThinkingDisplaySupport, thinkingDisplaySupported, type ClaudeCodeSpawn } from "../src/agent/claude-code-stream.ts";
 
 // The dev-only Claude Code CLI stream (owner, 2026-10-27): every test runs
 // against a fake `claude` child — no real CLI, no network, no plan quota.
@@ -123,6 +123,8 @@ test("argv: isolated print mode, built-in tools off, effort only when given", ()
 	assert.equal(args[args.indexOf("--effort") + 1], "high");
 	assert.equal(args[args.indexOf("--model") + 1], "claude-opus-5-5");
 	assert.equal(args[args.indexOf("--max-turns") + 1], "1");
+	assert.equal(args[args.indexOf("--thinking-display") + 1], "summarized");
+	assert(!claudeCodeArgs("m", undefined, { systemPrompt: "/tmp/sp.md" }, false).includes("--thinking-display"));
 	assert(!claudeCodeArgs("m", undefined, { systemPrompt: "/tmp/sp.md" }).includes("--effort"));
 	assert(!claudeCodeArgs("m", undefined, { systemPrompt: "/tmp/sp.md" }).includes("--mcp-config"));
 });
@@ -192,6 +194,69 @@ test("tool call: prefix stripped, streamed JSON parsed, thinking signature kept,
 	assert.deepEqual(tools.map((t) => t.name), ["ask_question"]);
 	assert.deepEqual(tools[0]!.inputSchema, quizTool.parameters);
 	assert.equal(calls[0]!.killed, true);
+});
+
+test("thinking that never gets text is not emitted (no empty row); a signature before the text is kept", async () => {
+	const { spawn } = fakeSpawn([
+		usageStart,
+		// An "omitted"-display block: empty delta + signature only.
+		sevent({ type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } }),
+		sevent({ type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "" } }),
+		sevent({ type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "S0" } }),
+		sevent({ type: "content_block_stop", index: 0 }),
+		sevent({ type: "content_block_start", index: 1, content_block: { type: "redacted_thinking", data: "opaque" } }),
+		sevent({ type: "content_block_stop", index: 1 }),
+		// A summarized block whose signature streams first.
+		sevent({ type: "content_block_start", index: 2, content_block: { type: "thinking", thinking: "" } }),
+		sevent({ type: "content_block_delta", index: 2, delta: { type: "signature_delta", signature: "S2" } }),
+		sevent({ type: "content_block_delta", index: 2, delta: { type: "thinking_delta", thinking: "Summary." } }),
+		sevent({ type: "content_block_stop", index: 2 }),
+		sevent({ type: "content_block_start", index: 3, content_block: { type: "text", text: "" } }),
+		sevent({ type: "content_block_delta", index: 3, delta: { type: "text_delta", text: "Answer" } }),
+		sevent({ type: "content_block_stop", index: 3 }),
+		sevent({ type: "message_delta", delta: { stop_reason: "end_turn" } }),
+		sevent({ type: "message_stop" }),
+	]);
+	const events = await collect(claudeCodeStream(spawn)(haiku(), context([{ role: "user", content: "hi", timestamp: 0 }])));
+	assert.deepEqual(events.map((e) => e.type), ["start", "thinking_start", "thinking_delta", "thinking_end", "text_start", "text_delta", "text_end", "done"]);
+	const done = events.at(-1)!;
+	assert(done.type === "done");
+	assert.deepEqual(done.message.content, [
+		{ type: "thinking", thinking: "Summary.", thinkingSignature: "S2" },
+		{ type: "text", text: "Answer" },
+	]);
+	assert.deepEqual(events.filter((e) => "contentIndex" in e).map((e) => (e as { contentIndex: number }).contentIndex), [0, 0, 0, 1, 1, 1]);
+});
+
+test("a CLI without --thinking-display: the step retries once without it, and later steps skip it", async () => {
+	resetThinkingDisplaySupport();
+	const calls: string[][] = [];
+	const reply = [usageStart, sevent({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }), sevent({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "ok" } }), sevent({ type: "content_block_stop", index: 0 }), sevent({ type: "message_delta", delta: { stop_reason: "end_turn" } }), sevent({ type: "message_stop" })];
+	const oldCli: ClaudeCodeSpawn = (command, args, options) => {
+		calls.push(args);
+		return args.includes("--thinking-display")
+			? fakeSpawn([], { stderr: "error: unknown option '--thinking-display'\n" }).spawn(command, args, options)
+			: fakeSpawn(reply).spawn(command, args, options);
+	};
+	const first = (await collect(claudeCodeStream(oldCli)(haiku(), context([{ role: "user", content: "hi", timestamp: 0 }])))).at(-1)!;
+	assert(first.type === "done");
+	assert.deepEqual(first.message.content, [{ type: "text", text: "ok" }]);
+	assert.deepEqual(calls.map((args) => args.includes("--thinking-display")), [true, false]);
+	assert.equal(thinkingDisplaySupported, false);
+	await collect(claudeCodeStream(oldCli)(haiku(), context([{ role: "user", content: "again", timestamp: 0 }])));
+	assert.deepEqual(calls.map((args) => args.includes("--thinking-display")), [true, false, false]);
+	resetThinkingDisplaySupport();
+});
+
+test("other early failures are not retried", async () => {
+	resetThinkingDisplaySupport();
+	let spawns = 0;
+	const { spawn } = fakeSpawn([], { stderr: "error: unknown option '--some-other-flag'\n" });
+	const last = (await collect(claudeCodeStream((...args) => { spawns++; return spawn(...args); })(haiku(), context([{ role: "user", content: "hi", timestamp: 0 }])))).at(-1)!;
+	assert(last.type === "error");
+	assert.match(last.error.errorMessage!, /--some-other-flag/);
+	assert.equal(spawns, 1);
+	assert.equal(thinkingDisplaySupported, true);
 });
 
 test("CLI exits before a response: error carries the CLI's result text", async () => {

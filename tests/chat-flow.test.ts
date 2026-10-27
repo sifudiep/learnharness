@@ -29,6 +29,8 @@ import { createTeacherAgent } from "../src/agent/teacher-agent.ts";
 import { createTeacherTools } from "../src/agent/tools.ts";
 import { handleChatInput, handleChatRequest } from "../src/server/chat-handler.ts";
 import { effectiveSettings } from "../src/server/stores.ts";
+import { providerKeyPresent } from "../src/server/keys.ts";
+import { refreshConnectionCatalog } from "../src/server/model-catalog.ts";
 import { isTurnRunning } from "../src/server/turn-liveness.ts";
 import { deliverJobResult, registerLiveAgent, setTurnRunner, steerLiveChat, unregisterLiveAgent } from "../src/server/jobs.ts";
 import { SessionModel } from "../components/session-core.ts";
@@ -1035,7 +1037,13 @@ describe("the BYOK turn gate (no factory floor — owner, 2026-09-22)", () => {
 		// one-fs-owner policy) — READ the resolved truth, never write it.
 		// Refusal holds when the chain is empty; a record-carried strong
 		// slot legitimately opens the gate (the chain is honest both ways).
-		const expectRefusal = effectiveSettings().models.strong === null;
+		const strong = effectiveSettings().models.strong;
+		const expectRefusal = strong === null;
+		// A record slot whose provider has no key (or, for the dev-only
+		// claude-code provider, no CLI login) is refused by the key gate.
+		// Refresh first, as the handler does, so both read the same status.
+		if (strong) await refreshConnectionCatalog(strong.provider);
+		const expectKeyRefusal = strong !== null && !providerKeyPresent(strong.provider);
 
 		const res = await handleChatRequest(post(chat.id, { type: "text", text: "teach me the solar system" }), agentFactory(scriptedTeacher(defaultLesson).engine));
 
@@ -1045,13 +1053,18 @@ describe("the BYOK turn gate (no factory floor — owner, 2026-09-22)", () => {
 			assert.equal(body.code, "models_not_configured");
 			assert.deepEqual(body.missing, ["strong"]);
 			assert.match(body.error, /No model configured/);
+		} else if (expectKeyRefusal) {
+			assert.equal(res.status, 503, "the key gate refuses a slot whose provider key is absent");
+			const body = (await res.json()) as { code: string; provider: string };
+			assert.equal(body.code, "provider_key_missing");
+			assert.equal(body.provider, strong!.provider);
 		} else {
 			assert.equal(res.status, 200, "the record's strong slot satisfies the conversation chain");
 			await drainRunning(chat.id);
 		}
 
 		// Either way: no phantom liveness, nothing durable from a refused turn.
-		if (expectRefusal) {
+		if (expectRefusal || expectKeyRefusal) {
 			assert.equal(isTurnRunning(chat.id), false, "the refusal never registers a live turn");
 			const saved = chatStore.getChat(chat.id)!;
 			assert.equal(saved.messages.length, 0, "no write-ahead persist before the gate");

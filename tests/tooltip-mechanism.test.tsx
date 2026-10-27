@@ -22,7 +22,7 @@ import { IS_MAC } from "../src/core/keyboard.ts";
 
 describe("hintText — the parenthesized composition", () => {
 	it("a registry action appends the LIVE binding (override-aware source)", () => {
-		assert.equal(hintText("Dictate", "toggle-dictation"), IS_MAC ? "Dictate (⌘D)" : "Dictate (Ctrl+D)");
+		assert.equal(hintText("Dictate", "toggle-dictation"), IS_MAC ? "Dictate (⌥D)" : "Dictate (Alt+D)");
 		assert.equal(hintText("Settings", "open-settings"), IS_MAC ? "Settings (⌘,)" : "Settings (Ctrl+,)");
 		assert.equal(hintText("Search sessions", "sessions-search"), IS_MAC ? "Search sessions (⌘⇧F)" : "Search sessions (Ctrl+Shift+F)");
 	});
