@@ -28,6 +28,7 @@ import { blurAfterPointerClick } from "@/components/focus-hygiene";
 import { dockStateKey } from "@/components/dock-state-key";
 import { QueuedSteersBody, type QueuedSteerLine } from "@/components/queued-steers";
 import { DictationBar, finishDictation, joinDictation, useDictation } from "@/components/dictation";
+import { AnswerPlayButton, ANSWER_ATTR, HighlightHoverBadge, PART_ATTR, SpeedPill, useReadAloud, useVoice, VoiceButton, VoicePauseButton, VoiceStopButton } from "@/components/voice";
 import { useFieldCycle } from "@/components/field-cycle";
 import { JobsContext } from "@/components/jobs-context";
 import { StatsBar } from "@/components/stats-bar";
@@ -459,6 +460,13 @@ export function Chat({
 	const busyRef = useRef(busy);
 	busyRef.current = busy;
 
+	/* READ-ALOUD (voice wave, owner 2026-10-28): the live teacher prose +
+	 * the pending question speak while voice is on (components/voice.tsx).
+	 * Every send/answer path below interrupts the old speech first. */
+	const voice = useVoice();
+	const readAloud = useReadAloud({ messages, busy, pending, voice });
+	const interruptVoice = readAloud.interrupt;
+
 	// The attach handoff (stream-reattach wave): the moment a resumed
 	// stream takes over the rendering — the SDK left "ready", so
 	// submitted/streaming means chunks are flowing — localStream covers
@@ -491,9 +499,10 @@ export function Chat({
 		(text: string) => {
 			const problem = activeProblemRef.current;
 			if (!problem) return;
+			interruptVoice(false);
 			void send({ type: "thinking", problemCallId: problem.toolCallId, text });
 		},
-		[send],
+		[send, interruptVoice],
 	);
 
 	// Teach-phase check (W5, vision §2): a pending QUIZ that lands once a
@@ -655,12 +664,15 @@ export function Chat({
 	const composerInputRef = useRef<HTMLTextAreaElement>(null);
 	useEffect(() => {
 		if (dictation.active) {
+			// Starting dictation silences the voice for the rest of the turn
+			// (owner: it must not talk over you, nor be transcribed).
+			if (!dictationWasActiveRef.current) interruptVoice(true);
 			dictationWasActiveRef.current = true;
 		} else if (dictationWasActiveRef.current) {
 			dictationWasActiveRef.current = false;
 			composerInputRef.current?.focus();
 		}
-	}, [dictation.active]);
+	}, [dictation.active, interruptVoice]);
 
 	// Jobs never gate the composer (contracts.ts "THE ASYNC PROTOCOL" §4): job
 	// tools resolve with an ack mid-turn, so the learner can interject while
@@ -703,8 +715,9 @@ export function Chat({
 		);
 	const sendNext = useCallback(() => {
 		if (!nextReady) return;
+		interruptVoice(false);
 		void send({ type: "next" });
-	}, [nextReady, send]);
+	}, [nextReady, send, interruptVoice]);
 
 	/* ENTER FROM ANYWHERE (owner round 16 refinement, 2026-10-06 —
 	 * keyboard-first): the move-on must not require composer focus. The
@@ -1131,6 +1144,7 @@ export function Chat({
 
 	const onSend = () => {
 		if (pending || compacting) return;
+		interruptVoice(false);
 		/* FINISH DICTATION FIRST (owner, 2026-10-01): a learner who keeps
 		 * talking right through Enter must not lose the tail — stop the run,
 		 * let the last finals land in the composer, then send the REF value
@@ -1177,6 +1191,7 @@ export function Chat({
 				chatId,
 				syncFromServer,
 				sendText: (t: string) => {
+					interruptVoice(false);
 					void send({ type: "text", text: t });
 				},
 				openSetup: () => setSetupOpen(true),
@@ -1320,7 +1335,18 @@ export function Chat({
 				<Conversation className="h-full min-w-0 flex-1" initial="instant" contextRef={scrollContextRef}>
 					<SessionMessageNavigation />
 					<ConversationContent className="min-h-full gap-0 p-0">
-						<div data-session-find-root="" className={`${COLUMN} flex flex-1 flex-col gap-4 pt-4`}>
+						{/* Read-aloud on teacher prose: right-click a word = read from
+						    it (a selection keeps the browser menu); a clean left click
+						    on the green word reads from it, elsewhere parks the reading
+						    cursor (never during a selection gesture). */}
+						<div
+							data-session-find-root=""
+							onContextMenu={readAloud.onContextMenu}
+							onMouseDown={readAloud.onMouseDown}
+							onMouseUp={readAloud.onMouseUp}
+							className={`${COLUMN} flex flex-1 flex-col gap-4 pt-4`}
+						>
+						<HighlightHoverBadge />
 							{messages.length === 0 && !busy && (
 								<ConversationEmptyState
 									title="New session"
@@ -1440,7 +1466,12 @@ export function Chat({
 												</div>
 											</div>
 									) : (
-									<Message from="assistant" className="max-w-full">
+									<Message from="assistant" className="relative max-w-full" {...{ [ANSWER_ATTR]: m.id }}>
+									{/* ▶/■ in the top-left margin (voice wave 2): reads this
+									    answer and every later one; only answers with prose. */}
+									{m.parts.some((p) => p.type === "text" && typeof p.text === "string" && p.text.trim()) && (
+										<AnswerPlayButton answerId={m.id} readAloud={readAloud} />
+									)}
 									<MessageContent className="w-full">
 											{m.parts.map((part, pi) => {
 												const isLastPart = mi === messages.length - 1 && pi === m.parts.length - 1;
@@ -1476,7 +1507,7 @@ export function Chat({
 														const sourceId = textPartMessageId(part.id);
 														const anchor = sourceId && sourceTextParts.get(sourceId) === part.id ? messageAnchorId(sourceId) : undefined;
 														return (
-															<div key={part.id || pi} id={anchor} data-source-message-id={sourceId ?? undefined} className="lh-source-passage">
+															<div key={part.id || pi} id={anchor} data-source-message-id={sourceId ?? undefined} {...{ [PART_ATTR]: part.id }} className="lh-source-passage">
 																<MessageResponse>{part.text}</MessageResponse>
 															</div>
 														);
@@ -1614,7 +1645,17 @@ export function Chat({
 					contextTokens={contextTokens}
 					pricing={pricing}
 					onReserve={setDockReserve}
-					dictationSlot={<DictationBar dictation={dictation} />}
+					dictationSlot={
+						<div className="flex w-full min-w-0 items-center gap-1.5">
+							<div className="flex min-w-0 flex-1 items-center justify-center">
+								<DictationBar dictation={dictation} />
+							</div>
+							<VoicePauseButton />
+							<VoiceStopButton onStop={readAloud.stop} />
+							<SpeedPill voice={voice} />
+							<VoiceButton voice={voice} />
+						</div>
+					}
 					dictationCancel={dictation.cancel}
 					queuedSteers={visibleQueuedSteers(steerQueue, nativeMessages)}
 					setupCta={
@@ -1659,6 +1700,7 @@ export function Chat({
 					}
 					onSubmitAnswer={(output) => {
 						if (!pending) return;
+						interruptVoice(false);
 						// THE ANSWER IS THE QUESTION CALL'S TOOL RESULT (fork 1, owner
 						// 2026-09-26): one input event, one turn — the hook appends
 						// the optimistic graded result (the AnsweredCard shows at

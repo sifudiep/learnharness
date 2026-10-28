@@ -36,6 +36,7 @@ import {
 	KEYBOARD_ACTIONS,
 } from "@/src/core";
 import { isDictationActive } from "@/components/dictation";
+import { clearVoiceCursor, hasVoiceCursor, isVoiceSpeaking, stopVoice, VOICE_ESC_EVENT } from "@/components/voice";
 import { useSettingsDialog } from "@/components/settings/settings-dialog.tsx";
 
 // Re-exported for the contract pin (tests/keyboard-toggle-sidebar.test.ts):
@@ -92,12 +93,27 @@ export function KeyboardShortcuts() {
 				// NOTHING is surfaced and no field is focused. This chain is
 				// the fallback, bottom-up: dictation (a live capture, not a
 				// surface — it survives Esc that closes a plan or overlay),
+				// then read-aloud speech (stops it and mutes the rest of the
+				// turn — voice stays on for the next answer, owner 2026-10-28),
+				// then a parked reading cursor (cleared),
 				// then abort the turn (a server-side turn has no client
 				// request to abort — the abort seam in Chat decides what's
 				// honestly stoppable, layered by escAbortTarget).
 				if (isDictationActive()) {
 					e.preventDefault();
 					window.dispatchEvent(new CustomEvent("lh:kbd-cancel-dictation"));
+					return;
+				}
+				if (isVoiceSpeaking()) {
+					e.preventDefault();
+					stopVoice();
+					window.dispatchEvent(new CustomEvent(VOICE_ESC_EVENT));
+					return;
+				}
+				// Only a parked reading cursor showing: Esc clears it.
+				if (hasVoiceCursor()) {
+					e.preventDefault();
+					clearVoiceCursor();
 					return;
 				}
 				window.dispatchEvent(new CustomEvent("lh:kbd-abort-turn"));

@@ -598,3 +598,10 @@ body {
 	outline: 1px solid var(--border);
 	border-radius: 0.25rem;
 }
+
+/* Read-aloud word highlight (voice wave 3, owner 2026-10-28): the word
+ * being heard, faint green in both themes — painted with the CSS Custom
+ * Highlight API (components/voice.tsx), so the DOM is never touched. */
+::highlight(lh-voice-word) {
+	background-color: rgb(34 197 94 / 0.25);
+}
