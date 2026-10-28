@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2Icon, MicIcon } from "lucide-react";
 import { useSettingsDialog } from "@/components/settings/settings-dialog";
 import { Hint } from "@/components/ui/hint";
+import { DeepgramKeylessError, mintFreshToken, warmTokens } from "@/components/deepgram-token";
 
 /**
  * Voice dictation — the cloud engine (STT wave 1, 2026-09-17).
@@ -12,6 +13,7 @@ import { Hint } from "@/components/ui/hint";
  * an AudioWorklet (public/worklets/pcm-capture.js → linear16 16kHz mono),
  * opens the Deepgram streaming WebSocket DIRECTLY (audio never loops
  * through our server) with a short-lived token minted by /api/stt/token
+ * (components/deepgram-token.ts — shared with read-aloud)
  * (the real key stays server-side), and streams frames while it listens.
  * Finals append into the PRIMARY INPUT (see below).
  *
@@ -114,59 +116,6 @@ export const DEEPGRAM_KEY_ID = "DEEPGRAM_API_KEY";
  * it and deep-links Settings → Keys → the Deepgram row. */
 export const DICTATION_KEYLESS = "Dictation needs a Deepgram key";
 
-/** Mint a fresh short-lived token (the route holds the real key
- *  server-side). Module-level: the start path's warm cache and the
- *  reconnect path both bottom out here. The keyless 503 (no
- *  DEEPGRAM_API_KEY) is the route's ONLY 503 — the raw message is
- *  dev-speak, so the error becomes the short client-authored line
- *  (zero-keys wave, owner 2026-09-25). */
-async function mintFreshToken(): Promise<string> {
-	const res = await fetch("/api/stt/token");
-	const data = (await res.json()) as { token?: string; message?: string };
-	if (!res.ok || !data.token) {
-		if (res.status === 503) throw new Error(DICTATION_KEYLESS);
-		throw new Error(data.message ?? `token route ${res.status}`);
-	}
-	return data.token;
-}
-
-/** Warm-token cache (mitigation D, owner 2026-09-27): the click path takes
- *  the cached promise instead of a remote mint. TTL keeps a cached token
- *  from going stale (self-heal anyway: a rejected handshake rides the
- *  reconnect-once path with a FRESH mint); a failed mint resets the cache
- *  so the next call re-mints — the honest error path stays honest.
- *  refresh() re-mints in the background (page mount, run end); its
- *  failures are silently tolerated (a keyless pre-mint just doesn't warm). */
-export const WARM_TOKEN_TTL_MS = 3 * 60_000;
-
-export type WarmMinter = { mint: () => Promise<string>; refresh: () => void };
-
-export function createWarmMinter(
-	mint: () => Promise<string>,
-	now: () => number = Date.now,
-	ttlMs: number = WARM_TOKEN_TTL_MS,
-): WarmMinter {
-	let warm: { p: Promise<string>; at: number } | null = null;
-	const m: WarmMinter = {
-		mint: () => {
-			if (!warm || now() - warm.at > ttlMs) {
-				const p = mint().catch((e: unknown) => {
-					warm = null; // failed mint: next call re-mints
-					throw e;
-				});
-				warm = { p, at: now() };
-			}
-			return warm.p;
-		},
-		refresh: () => {
-			warm = null;
-			m.mint().catch(() => {}); // background best-effort
-		},
-	};
-	return m;
-}
-
-const warmTokens = createWarmMinter(mintFreshToken);
 
 /* Persistent capture graph (mitigation C, owner 2026-09-27): one
  * app-lifetime AudioContext + a module-load memo. Created under the
@@ -502,7 +451,7 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 			token = await tokenPromise;
 		} catch (e) {
 			if (gen !== genRef.current) return;
-			setError(e instanceof Error ? e.message : "token unavailable");
+			setError(e instanceof DeepgramKeylessError ? DICTATION_KEYLESS : e instanceof Error ? e.message : "token unavailable");
 			cleanup();
 			return;
 		}

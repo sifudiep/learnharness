@@ -1,6 +1,6 @@
 /**
  * Unit tests — the dictation warm-token cache (mitigation D, owner
- * 2026-09-27: components/dictation.tsx createWarmMinter).
+ * 2026-09-27: components/deepgram-token.ts createWarmMinter).
  *
  * The click path takes the cached promise instead of a remote mint, so
  * the cache's behavior IS the felt start latency: one mint per warm
@@ -10,7 +10,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createWarmMinter } from "../components/dictation.tsx";
+import { createWarmMinter } from "../components/deepgram-token.ts";
 
 describe("warm-token cache (mitigation D, owner 2026-09-27)", () => {
 	it("caches: concurrent and repeat mints share ONE promise and mint once", async () => {
