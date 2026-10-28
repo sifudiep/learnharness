@@ -22,6 +22,8 @@
 
 export type KeyAction =
 	| "toggle-dictation"
+	| "toggle-voice"
+	| "toggle-voice-pause"
 	| "open-model-picker"
 	| "cycle-thinking"
 	| "toggle-sidebar"
@@ -57,6 +59,10 @@ export interface KeyActionDef {
 
 export const KEYBOARD_ACTIONS: readonly KeyActionDef[] = [
 	{ id: "toggle-dictation", label: "Toggle dictation", scope: "global", binding: "alt+d" },
+	{ id: "toggle-voice", label: "Toggle read aloud", scope: "chat", binding: "alt+s" },
+	// Bare P (owner, 2026-10-28): fires only outside typing surfaces (the
+	// dispatcher's input guard); idle (nothing reading/paused) = no-op.
+	{ id: "toggle-voice-pause", label: "Pause/resume reading", scope: "chat", binding: "p" },
 	{ id: "open-settings", label: "Open settings", scope: "global", binding: "mod+," },
 	{ id: "open-model-picker", label: "Model selector", scope: "global", binding: "mod+k" },
 	{ id: "cycle-thinking", label: "Cycle thinking level", scope: "global", binding: "shift+tab" },
