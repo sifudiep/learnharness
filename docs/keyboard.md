@@ -30,7 +30,8 @@ second pillar of input).
   from typing surfaces; bare keys never do).
 - **Esc priority chain**: topmost popover → cheat sheet → cancel
   dictation (DISCARD — the transcript flush is Option+D/Stop only, owner
-  round) → abort turn (local stream only — a server-side wake turn has
+  round) → stop read-aloud speech (mutes the rest of the turn; voice stays
+  on) → clear a parked reading cursor → abort turn (local stream only — a server-side wake turn has
   no client request to abort). Every element/document-level Esc handler
   that acts calls `e.stopPropagation()` so the window chain never
   double-fires. The session search claims Esc to blur back to normal.
@@ -43,6 +44,9 @@ second pillar of input).
 | Action | Binding | Seam |
 |---|---|---|
 | Toggle dictation | ⌥D | `lh:kbd-toggle-dictation` (dictation.tsx) |
+| Toggle read aloud | ⌥S | `lh:kbd-toggle-voice` (voice.tsx; chat page only) |
+| Pause/resume reading | P *(not in a text field)* | `lh:kbd-toggle-voice-pause` (voice.tsx; a moved/clicked reading cursor = read from it; idle = no-op) |
+| Move the reading cursor | ← → (word) · ↑ ↓ (next visual line) · ⌥← → (sentence) · ⌥↑ ↓ (paragraph) · ⌘← → (line start/end) · ⌘↑ ↓ (answer's first/last word; again = previous/next answer) | voice.tsx `onCursorKey` — pauses reading; only while a cursor exists or something reads (else the arrows scroll); the question dock's rows claim first |
 | Model selector | ⌘K | `lh:kbd-open-model-picker` (model-picker.tsx) |
 | Cycle thinking level | Shift+Tab | `lh:kbd-cycle-thinking` (model-picker.tsx) |
 | Toggle sidebar | ⌘B | `lh:toggle-sidebar` (sidebar.tsx) |
