@@ -269,6 +269,20 @@ export function stopVoice(): void {
 	emit();
 }
 
+/** Space = P (owner, 2026-10-28) — but only while something reads or a
+ *  cursor is parked (idle Space keeps scrolling the page), never in a
+ *  typing surface or on a focused control (Space presses it), never when
+ *  a surface claimed it (the question dock's row pick). */
+export function onSpaceKey(e: KeyboardEvent): void {
+	if (e.key !== " " || e.defaultPrevented || e.repeat || e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+	if (isTypingSurface(e)) return;
+	const t = e.target as Element | null;
+	if (t?.closest?.("button, a, select, summary, [role=button], [role=checkbox], [role=switch], [role=radio], [role=option]")) return;
+	if (!isVoiceSpeaking() && !cursor) return;
+	e.preventDefault();
+	togglePause();
+}
+
 /** P / the ⏸ button: freeze or resume playback (idle = no-op). Text that
  *  arrives while paused queues; the highlight stays on the paused word.
  *  A MOVED or click-placed cursor (voice wave 4) wins: P reads from it. */
@@ -709,7 +723,11 @@ export function useVoice(): Voice {
 	// is no cursor and nothing reads; the dock's row machine claims first).
 	useEffect(() => {
 		window.addEventListener("keydown", onCursorKey);
-		return () => window.removeEventListener("keydown", onCursorKey);
+		window.addEventListener("keydown", onSpaceKey);
+		return () => {
+			window.removeEventListener("keydown", onCursorKey);
+			window.removeEventListener("keydown", onSpaceKey);
+		};
 	}, []);
 	// P (the registry's bare key — never fires in a text field).
 	useEffect(() => {

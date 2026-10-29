@@ -45,7 +45,7 @@ second pillar of input).
 |---|---|---|
 | Toggle dictation | ⌥D | `lh:kbd-toggle-dictation` (dictation.tsx) |
 | Toggle read aloud | ⌥S | `lh:kbd-toggle-voice` (voice.tsx; chat page only) |
-| Pause/resume reading | P *(not in a text field)* | `lh:kbd-toggle-voice-pause` (voice.tsx; a moved/clicked reading cursor = read from it; idle = no-op) |
+| Pause/resume reading | P · Space *(not in a text field; Space only while reading or a cursor is parked — else it scrolls)* | `lh:kbd-toggle-voice-pause` (voice.tsx; a moved/clicked reading cursor = read from it; idle = no-op) |
 | Move the reading cursor | ← → (word) · ↑ ↓ (next visual line) · ⌥← → (sentence) · ⌥↑ ↓ (paragraph) · ⌘← → (line start/end) · ⌘↑ ↓ (answer's first/last word; again = previous/next answer) | voice.tsx `onCursorKey` — pauses reading; only while a cursor exists or something reads (else the arrows scroll); the question dock's rows claim first |
 | Model selector | ⌘K | `lh:kbd-open-model-picker` (model-picker.tsx) |
 | Cycle thinking level | Shift+Tab | `lh:kbd-cycle-thinking` (model-picker.tsx) |
