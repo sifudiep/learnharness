@@ -494,8 +494,10 @@ function QuestionDockForm({
 			// globally — they must not ALSO walk the question rows).
 			const modded = e.altKey || e.metaKey || e.ctrlKey;
 			// Plain Tab toggles focus: rows → thinking. The confidence
-			// slider takes NO focus at all (owner, UI round 2026-10-01) —
-			// global ←/→ own its keyboard, so it never joins the chain.
+			// slider takes NO focus at all (owner, UI round 2026-10-01) and
+			// no keys: the global ←/→ confidence cycling was REMOVED (owner,
+			// 2026-10-28 — it hijacked the read-aloud cursor's arrows); the
+			// slider is mouse-only.
 			// Shift+Tab falls through (the global thinking-level cycle owns
 			// it), so the shift check matters.
 			if (e.key === "Tab" && !e.shiftKey && !modded) {
@@ -524,19 +526,6 @@ function QuestionDockForm({
 				const next = Math.max((kbdIdx ?? rowCount) - 1, 0);
 				setKbdIdx(next);
 				if (t?.closest?.("[data-kbdrow]")) focusRow(next);
-			} else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-				// Global confidence cycling (owner, UI round 2026-10-01): the
-				// SAME pattern as ↑/↓ over the rows — works wherever focus
-				// sits, no click-in, no focus ring. Dead on "I don't know"
-				// (the slider grays out and nothing is sent).
-				if (kind !== "quiz" || sel.dontKnow) return;
-				e.preventDefault();
-				setConfIdx((i) =>
-					Math.min(
-						CONFIDENCE_STOPS.length - 1,
-						Math.max(0, i + (e.key === "ArrowRight" ? 1 : -1)),
-					),
-				);
 			} else if (e.key === " ") {
 				if (kbdIdx === null) return; // plain Space keeps scrolling the page
 				e.preventDefault();
