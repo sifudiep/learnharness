@@ -252,3 +252,16 @@ describe("voice wave 4b — ⌥/⌘ cursor jumps (owner 2026-10-28, macOS-style)
 		assert.equal(lineEdgeIndex(boxes.length, box, 3, -1), 3);
 	});
 });
+
+describe("highlight robustness (owner live report 2026-10-28: no green on a new block)", () => {
+	it("GFM alert markers are never spoken", () => {
+		assert.equal(speakableText("> [!IMPORTANT]\n> The AI executes actions."), "The AI executes actions.");
+	});
+
+	it("matchWords falls back past opening words that never reached the screen", async () => {
+		const { matchWords } = await import("../src/core/index.ts");
+		const screen = ["Intro.", "The", "AI", "executes", "actions."];
+		assert.equal(matchWords(screen, ["[!IMPORTANT]", "The", "AI", "executes"]), 0); // backs up one: the stray word sits before "The"
+		assert.equal(matchWords(screen, ["The", "AI", "executes"]), 1);
+	});
+});

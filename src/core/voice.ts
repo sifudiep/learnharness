@@ -147,13 +147,17 @@ export const CODE_WORD = "(code)";
 
 type MdNode = { type: string; value?: string; children?: MdNode[] };
 
+/** GFM alert markers ("> [!IMPORTANT]") render as callout chrome, never
+ *  as words — never speak them (md-blocks.tsx's marker grammar). */
+const ALERT_MARKER = /^([ \t]*>[ \t]*)\[!(note|tip|important|warning|caution)\][ \t]*$/gim;
+
 const BLOCKS = new Set(["paragraph", "heading", "tableCell", "blockquote", "listItem", "list", "root", "table", "tableRow"]);
 
 /** Plain speech for a markdown passage. Math spans go first (the rendering
  *  stack's own delimiter reader, legacy \( \[ included), then the
  *  CommonMark tree supplies the text — never the markup. */
 export function speakableText(markdown: string): string {
-	const replaced = readContentSpans(markdown)
+	const replaced = readContentSpans(markdown.replace(ALERT_MARKER, ""))
 		// A display block on its own lines keeps its surrounding blank lines
 		// in the prose spans, so the word lands as its own block anyway.
 		.map((s) => (s.kind === "math" ? EQUATION_WORD : s.raw))
@@ -341,9 +345,19 @@ export function normWord(word: string): string {
 
 /** Where a spoken sentence's words sit among the on-screen words (auto-read
  *  speaks the markdown source; the screen is the rendered answer): the
- *  index of the first screen word of the first match at or after `from`,
- *  on the sentence's first (up to) three comparable words — or -1. */
+ *  screen index of the sentence's FIRST word, from the first match at or
+ *  after `from` on (up to) three comparable words — or -1. When the
+ *  opening words never made it to the screen (a stray marker), the match
+ *  retries from the 2nd, then 3rd spoken word and backs the index up. */
 export function matchWords(screen: readonly string[], spoken: readonly string[], from = 0): number {
+	for (let skip = 0; skip < Math.min(3, spoken.length); skip++) {
+		const i = matchFrom(screen, spoken.slice(skip), from);
+		if (i >= 0) return Math.max(0, i - skip);
+	}
+	return -1;
+}
+
+function matchFrom(screen: readonly string[], spoken: readonly string[], from: number): number {
 	const want = spoken.map(normWord).filter(Boolean).slice(0, 3);
 	if (!want.length) return -1;
 	const have = screen.map(normWord);

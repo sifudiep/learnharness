@@ -370,9 +370,13 @@ function resolveBase(c: Chunk): number | null {
 		const i = screen.findIndex((t) => t.end > a.domStart!);
 		a.base = i;
 	} else {
+		// Only a FOUND match is cached: a miss (the passage still rendering,
+		// a re-render mid-stream) retries on the next paint — caching -1 left
+		// whole blocks without a highlight (owner live report, 2026-10-28).
 		const i = matchWords(screen.map((t) => t.word), wordTokens(c.text).map((t) => t.word), matchCursor.get(a.part) ?? 0);
+		if (i < 0) return -1;
 		a.base = i;
-		if (i >= 0) matchCursor.set(a.part, i + wordTokens(c.text).length);
+		matchCursor.set(a.part, i + wordTokens(c.text).length);
 	}
 	return a.base;
 }
