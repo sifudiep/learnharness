@@ -63,7 +63,7 @@ All three platforms support in-app updates.
 
 ```bash
 npm install
-npm run dev        # http://localhost:3000
+npm run dev        # http://localhost:9767
 npm test           # deterministic, no LLM, no network
 ```
 

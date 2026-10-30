@@ -15,7 +15,7 @@ Not a chat app with a graph bolted on: sessions are probe→teach lessons, the p
 ```bash
 npm install          # once
 
-npm run dev          # http://localhost:3000
+npm run dev          # http://localhost:9767
 npm run build        # production build (standalone output)
 npm start            # serve the production build
 
