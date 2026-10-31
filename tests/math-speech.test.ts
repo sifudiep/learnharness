@@ -21,6 +21,18 @@ function rendered(html: string): Element {
 const inline = (tex: string) => katex.renderToString(tex, { throwOnError: false });
 const display = (tex: string) => katex.renderToString(tex, { throwOnError: false, displayMode: true });
 
+describe("browser-safe engine import", () => {
+	it("imports the API module, never the package root", async () => {
+		// The root build evaluates the engine's CLI, which calls Node's
+		// require at load: fine in Node, "require is not defined" in the
+		// browser — so only this source check can catch a regression.
+		const { readFile } = await import("node:fs/promises");
+		const src = await readFile(new URL("../src/core/math-speech.ts", import.meta.url), "utf8");
+		assert.ok(src.includes('import("speech-rule-engine/js/common/system.js")'));
+		assert.ok(!/import\("speech-rule-engine"\)/.test(src));
+	});
+});
+
 describe("before the engine loads", () => {
 	it("every path falls back to (equation)", () => {
 		assert.equal(mathSpeechReady(), false);
@@ -90,6 +102,15 @@ describe("fix-ups", () => {
 		);
 		assert.equal(mathToSpeech("a \\mid b"), "a divides b");
 		assert.equal(mathToSpeech("|x|"), "the absolute value of x");
+	});
+
+	it("currency inside math reaches the voice as $amount", () => {
+		assert.equal(mathToSpeech("\\$78.90"), "$78.90");
+		assert.equal(mathToSpeech("\\$80"), "$80");
+		assert.equal(mathToSpeech("\\$1,200"), "$1,200");
+		assert.equal(mathToSpeech("\\$1{,}200.50"), "$1,200.50");
+		assert.equal(mathToSpeech("\\$80 - \\$78.90 = \\$1.10"), "$80 minus $78.90 equals $1.10");
+		assert.equal(speakableText("- **Day A:** high $\\$81.40$, close $\\$78.90$"), "Day A: high $81.40, close $78.90.");
 	});
 
 	it("Delta is Delta, not the triangle glyph", () => {

@@ -57,7 +57,10 @@ export function loadMathSpeech(): Promise<void> {
 		// the global SREfeature into EVERY setup — that first one included —
 		// so the bundled loader must be in place before the import.
 		(globalThis as { SREfeature?: unknown }).SREfeature = FEATURES;
-		const mod = (await import("speech-rule-engine")) as unknown as Sre & { default?: Sre };
+		// The API module, not the package root: the root build also evaluates
+		// the engine's CLI, which calls Node's require at load and throws
+		// "require is not defined" in the browser (browser-verified).
+		const mod = (await import("speech-rule-engine/js/common/system.js")) as unknown as Sre & { default?: Sre };
 		const sre = typeof mod.setupEngine === "function" ? mod : mod.default!;
 		await sre.setupEngine(FEATURES);
 		await sre.engineReady();
@@ -75,7 +78,7 @@ export function mathSpeechReady(): boolean {
 
 // ─── fix-ups (owner, 2026-10-31) ────────────────────────────────────────────
 // Rewritten at the TeX level, before the engine runs, where the meaning is
-// still unambiguous — never by editing the spoken words afterwards.
+// still unambiguous. The one spoken-word rewrite is currency (DOLLAR_AMOUNT).
 
 const said = (words: string) => `\\text{ ${words} }`;
 
@@ -120,6 +123,13 @@ export function mathFixups(tex: string): string {
  *  infinity". Upright carries no meaning aloud. */
 const UPRIGHT = / mathvariant="normal"/g;
 
+/** Currency (owner, 2026-10-31): the engine reads $\$78.90$ as "dollar sign
+ *  78.90". Hand the voice "$78.90" instead — the TTS reads that as
+ *  "seventy-eight dollars and ninety cents". */
+const DOLLAR_AMOUNT = /\bdollar sign (\d{1,3}(?: comma \d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\b/g;
+/** Inside math the engine reads a thousands comma as punctuation: put it back. */
+const dollars = (_: string, amount: string) => `$${amount.replace(/ comma /g, ",")}`;
+
 /** Spoken words for one formula's TeX (no delimiters). Synchronous; falls
  *  back to EQUATION_WORD before the engine loads or on unreadable TeX. */
 export function mathToSpeech(tex: string): string {
@@ -128,7 +138,9 @@ export function mathToSpeech(tex: string): string {
 	try {
 		const mathml = katex.renderToString(mathFixups(body), { output: "mathml", throwOnError: true, strict: false, trust: false });
 		const math = /<math[\s\S]*<\/math>/.exec(mathml)?.[0].replace(UPRIGHT, "");
-		const words = math ? engine.toSpeech(math).replace(/\p{M}+/gu, "").replace(/\s+/g, " ").trim() : "";
+		const words = math
+			? engine.toSpeech(math).replace(/\p{M}+/gu, "").replace(DOLLAR_AMOUNT, dollars).replace(/\s+/g, " ").trim()
+			: "";
 		return words || EQUATION_WORD;
 	} catch {
 		return EQUATION_WORD;

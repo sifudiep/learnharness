@@ -1,6 +1,6 @@
-// speech-rule-engine ships its .d.ts under js/ without a "types" entry, so
-// TypeScript can't find it. Only the API math-speech.ts uses is declared.
-declare module "speech-rule-engine" {
+// speech-rule-engine has no "types"/"exports" entries, so TypeScript can't
+// resolve its .d.ts. Only the API math-speech.ts uses is declared.
+declare module "speech-rule-engine/js/common/system.js" {
 	export function setupEngine(feature: {
 		locale?: string;
 		domain?: string;
