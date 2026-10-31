@@ -6,7 +6,8 @@ import { sentenceStartBefore } from "../src/core/index.ts";
 
 /**
  * Manual reading reads the RENDERED answer (voice wave 2, owner
- * 2026-10-28): KaTeX → "(equation)", <pre> → "(code)", chrome skipped, and
+ * 2026-10-28): KaTeX → "(equation)" (engine not loaded here; spoken math is in
+ * math-speech.test.ts), <pre> → "(code)", chrome skipped, and
  * a right-click caret maps back to the clicked sentence.
  */
 

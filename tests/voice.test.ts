@@ -13,7 +13,8 @@ import {
 
 /**
  * Read-aloud pins (voice wave, owner 2026-10-28): every math span speaks as
- * "(equation)", fenced code as "(code)", inline code as text; the stream
+ * "(equation)" (the fallback: this file never loads the math speech engine —
+ * spoken math lives in math-speech.test.ts), fenced code as "(code)", inline code as text; the stream
  * never cuts inside an open construct; questions read text + context but
  * never options — predictions, ask, probe/recall; checks stay silent.
  */

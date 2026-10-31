@@ -7,7 +7,8 @@
  * Owner rulings carried in:
  *  - Deepgram Aura-2 on the existing DEEPGRAM_API_KEY (same token mint as
  *    dictation).
- *  - Every math span (inline AND display) speaks as "(equation)"; fenced
+ *  - Every math span (inline AND display) is spoken out (owner, 2026-10-31:
+ *    math-speech.ts — "(equation)" only until the engine loads); fenced
  *    code as "(code)"; inline code reads as plain text.
  *  - Questions speak their text + context line, NEVER the options —
  *    predictions, ask, probe/recall; checks stay silent.
@@ -18,6 +19,7 @@
 
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { readContentSpans } from "./content-reader.ts";
+import { EQUATION_WORD, mathToSpeech } from "./math-speech.ts";
 import { normalizeQuizType } from "./question-core.ts";
 
 export interface AuraVoice {
@@ -142,7 +144,6 @@ export function saveVoicePrefs(patch: Partial<VoicePrefs>): VoicePrefs {
 
 // ─── markdown → speech ──────────────────────────────────────────────────────
 
-export const EQUATION_WORD = "(equation)";
 export const CODE_WORD = "(code)";
 
 type MdNode = { type: string; value?: string; children?: MdNode[] };
@@ -153,15 +154,22 @@ const ALERT_MARKER = /^([ \t]*>[ \t]*)\[!(note|tip|important|warning|caution)\][
 
 const BLOCKS = new Set(["paragraph", "heading", "tableCell", "blockquote", "listItem", "list", "root", "table", "tableRow"]);
 
+/** A math span's slot in the markdown handed to the parser: spoken words
+ *  go in only after parsing, so they can never be read as markup. */
+const MATH_SLOT = /(\d+)/g;
+
 /** Plain speech for a markdown passage. Math spans go first (the rendering
- *  stack's own delimiter reader, legacy \( \[ included), then the
- *  CommonMark tree supplies the text — never the markup. */
+ *  stack's own delimiter reader, legacy \( \[ included) and are spoken via
+ *  mathToSpeech, then the CommonMark tree supplies the text — never the
+ *  markup. */
 export function speakableText(markdown: string): string {
+	const math: string[] = [];
 	const replaced = readContentSpans(markdown.replace(ALERT_MARKER, ""))
 		// A display block on its own lines keeps its surrounding blank lines
-		// in the prose spans, so the word lands as its own block anyway.
-		.map((s) => (s.kind === "math" ? EQUATION_WORD : s.raw))
+		// in the prose spans, so the words land as their own block anyway.
+		.map((s) => (s.kind === "math" ? `${math.push(mathToSpeech(s.body)) - 1}` : s.raw))
 		.join("");
+	const unslot = (text: string) => text.replace(MATH_SLOT, (_, i: string) => math[Number(i)] ?? EQUATION_WORD);
 	const blocks: string[] = [];
 	let line = "";
 	const endBlock = () => {
@@ -177,6 +185,8 @@ export function speakableText(markdown: string): string {
 				blocks.push(CODE_WORD);
 				return;
 			case "text":
+				line += unslot(node.value ?? "");
+				return;
 			case "inlineCode":
 				line += node.value ?? "";
 				return;

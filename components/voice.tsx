@@ -9,6 +9,7 @@ import {
 	wordStartBefore,
 	VOICE_SPEEDS,
 	kbdEventForAction,
+	loadMathSpeech,
 	loadVoicePrefs,
 	questionSpeech,
 	isTypingSurface,
@@ -798,6 +799,14 @@ export function useReadAloud({
 	pendingRef.current = pending;
 	const busyRef = useRef(busy);
 	busyRef.current = busy;
+
+	// Equations are spoken out (owner, 2026-10-31). The engine loads when a
+	// chat opens — never mid-click: click offsets are computed against the
+	// speech text, which changes once equations stop reading "(equation)".
+	// A failed load keeps the "(equation)" fallback.
+	useEffect(() => {
+		loadMathSpeech().catch(() => {});
+	}, []);
 
 	const skipArrived = useCallback(() => {
 		for (const [key, text] of textParts(messagesRef.current)) offsets.current.set(key, text.length);

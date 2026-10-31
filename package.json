@@ -66,6 +66,7 @@
 		"react-dom": "^19.2.8",
 		"react-jsx-parser": "^2.4.1",
 		"remark-breaks": "^4.0.0",
+		"speech-rule-engine": "4.1.5",
 		"streamdown": "^2.5.0",
 		"tailwind-merge": "^3.6.0",
 		"tokenlens": "^1.3.1",

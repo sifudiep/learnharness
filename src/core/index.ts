@@ -77,6 +77,8 @@ export * from "./auth-keys.ts";
 export * from "./keyboard.ts";
 // voice.ts: read-aloud — Aura-2 voice catalog, markdown → speech, streaming cuts (pure, browser-safe).
 export * from "./voice.ts";
+// math-speech.ts: equations → spoken words for read-aloud (speech-rule-engine, lazy-loaded).
+export * from "./math-speech.ts";
 export * from "./coverage.ts";
 // session-markdown.ts (2026-09-27 engine; first consumer 2026-10-06): the
 // ONE session→markdown formatter — the extractor's view and the user-facing
