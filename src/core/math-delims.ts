@@ -34,12 +34,22 @@ function replaceEscapedDollars(content: string): string {
 	return out;
 }
 
+/** A lone dollar the shared reader left in prose is currency ("$110, then
+ * ... to $111.50"). Escape it so Markdown's single-dollar math cannot pair
+ * it either. Dollar runs ($$) and already-escaped dollars stay raw. */
+function escapeProseDollars(prose: string): string {
+	return prose.replace(/\$+/g, (run: string, i: number) =>
+		run.length === 1 && !escaped(prose, i) ? "\\$" : run);
+}
+
 /** Read old \(...\)/\[...\] syntax without touching literal content or
- * reparsing native math as Markdown. Dollar authoring remains native. */
+ * reparsing native math as Markdown. Dollar authoring remains native;
+ * currency dollars become escaped literals. */
 export function transformMathDelimiters(markdown: string): string {
 	let offset = 0;
 	return readContentSpans(markdown).map(span => {
 		const start = offset; offset += span.raw.length;
+		if (span.kind === "prose") return escapeProseDollars(span.raw);
 		if (span.kind !== "math") return span.raw;
 		if (span.open === "$") return "$" + replaceEscapedDollars(span.body) + span.close;
 		if (span.open !== "\\(" && span.open !== "\\[") return span.raw;

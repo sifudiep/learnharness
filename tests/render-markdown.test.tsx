@@ -53,9 +53,11 @@ describe("math delimiter transform (pure unit)", () => {
 		);
 	});
 
-	it("leaves currency untouched", () => {
-		const md = "It costs $5 and $10 more. $$big$$ sums too.";
-		assert.equal(transformMathDelimiters(md), md);
+	it("escapes currency to literal dollars; $$ math stays native", () => {
+		assert.equal(
+			transformMathDelimiters("It costs $5 and $10 more. $$big$$ sums too."),
+			"It costs \\$5 and \\$10 more. $$big$$ sums too.",
+		);
 	});
 
 	it("leaves escaped delimiters untouched (\\\\( is a literal backslash)", () => {
@@ -281,13 +283,16 @@ describe("escaped dollars inside math — transform units", () => {
 	it("does NOT replace even-backslash dollars (row break + dollar keeps closing)", () => {
 		// `$a\\$` closes at that `$` in micromark today — the parity is load-
 		// bearing; replacing it would change span ends for legitimate TeX.
-		const md = "$a\\\\$b$ tail";
-		assert.equal(transformMathDelimiters(md), md);
+		// The span still ends there; the stranded trailing `$` is prose and is
+		// escaped (it was an unpaired literal before too).
+		assert.equal(transformMathDelimiters("$a\\\\$b$ tail"), "$a\\\\$b\\$ tail");
 	});
 
-	it("leaves prose escaped dollars and bare currency untouched", () => {
-		const md = "It costs \\$5 flat, then $5 and $10 more.";
-		assert.equal(transformMathDelimiters(md), md);
+	it("leaves prose escaped dollars untouched and escapes bare currency", () => {
+		assert.equal(
+			transformMathDelimiters("It costs \\$5 flat, then $5 and $10 more."),
+			"It costs \\$5 flat, then \\$5 and \\$10 more.",
+		);
 	});
 
 	it("leaves display spans untouched — a lone $ can't close $$, \\$ already survives", () => {
@@ -295,10 +300,10 @@ describe("escaped dollars inside math — transform units", () => {
 		assert.equal(transformMathDelimiters(md), md);
 	});
 
-	it("leaves code spans, fences, and unbalanced spans untouched", () => {
+	it("leaves code spans and fences untouched; an unbalanced opener is a literal", () => {
 		assert.equal(transformMathDelimiters("Type `$x = \\$5$` literally."), "Type `$x = \\$5$` literally.");
 		assert.equal(transformMathDelimiters("```\n$x = \\$5$\n```"), "```\n$x = \\$5$\n```");
-		assert.equal(transformMathDelimiters("Broken: $x = \\$5"), "Broken: $x = \\$5");
+		assert.equal(transformMathDelimiters("Broken: $x = \\$5"), "Broken: \\$x = \\$5");
 	});
 
 	it("clean spans stay byte-identical; only the escape-bearing span changes", () => {
@@ -444,3 +449,58 @@ describe("over-escaped command heal — doubled backslashes in tool args (owner 
 	});
 });
 
+
+// Currency dollars (stock-lesson incident 2026-10-31): with single-dollar
+// math on, "$110, then ... to $" rendered as one KaTeX span and swallowed
+// the **bold** markers. Lone dollars now follow Pandoc's tex_math_dollars
+// rule and prose dollars are escaped before Markdown sees them.
+const STOCK_PROBE =
+	"Price rallies, forms a swing high at $110, then pulls back. A day later it trades to $111.50 " +
+	"intraday (above the $110 high) but **closes** at $108, back below $110. What is the most common reading?";
+
+describe("currency dollars — transform units", () => {
+	it("escapes every price in the stock probe and leaves bold intact", () => {
+		assert.equal(
+			transformMathDelimiters(STOCK_PROBE),
+			STOCK_PROBE.replaceAll("$", "\\$"),
+		);
+	});
+
+	it("a closer followed by a digit or preceded by whitespace never pairs", () => {
+		assert.equal(transformMathDelimiters("costs $5 and $10"), "costs \\$5 and \\$10");
+		assert.equal(transformMathDelimiters("from $5 to $10 today"), "from \\$5 to \\$10 today");
+	});
+
+	it("real math stays native", () => {
+		assert.equal(transformMathDelimiters("$x$ and $f(x) = 2$"), "$x$ and $f(x) = 2$");
+		assert.equal(transformMathDelimiters("the value $5$ here"), "the value $5$ here");
+	});
+
+	it("a currency dollar before real math does not swallow it", () => {
+		assert.equal(transformMathDelimiters("costs $5 and $x$"), "costs \\$5 and $x$");
+	});
+
+	it("already-escaped dollars, display runs and code are untouched", () => {
+		assert.equal(transformMathDelimiters("pay \\$5 now"), "pay \\$5 now");
+		assert.equal(transformMathDelimiters("a `$1 x$` b"), "a `$1 x$` b");
+		assert.equal(transformMathDelimiters("$$\nx^2\n$$"), "$$\nx^2\n$$");
+		assert.equal(transformMathDelimiters("```\nprice = $5\n```"), "```\nprice = $5\n```");
+	});
+});
+
+describe("currency dollars — rendering", () => {
+	it("the stock probe renders no math and a real bold", () => {
+		const html = render(STOCK_PROBE);
+		assert.ok(!html.includes("katex"), `prices must not render as math, got: ${html.slice(0, 400)}`);
+		assert.ok(html.includes("$110, then pulls back"), "dollar signs render literally");
+		assert.ok(html.includes("$111.50"), "decimal prices render literally");
+		assert.ok(!html.includes("**"), "bold markers are consumed, not shown");
+		assert.ok(/<strong[^>]*>closes<\/strong>/.test(html), "closes is bold");
+	});
+
+	it("prices next to real math keep both", () => {
+		const html = render("It costs $5 per unit, so $n$ units cost $5n$.");
+		assert.ok(html.includes("$5 per unit"), "currency renders literally");
+		assert.equal((html.match(/class="katex"/g) ?? []).length, 2, "both formulas render");
+	});
+});
