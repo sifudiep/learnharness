@@ -31,8 +31,20 @@ function literalRanges(text: string): Array<{ start: number; end: number }> {
 	return ranges.sort((a, b) => a.start - b.start);
 }
 
+/** Currency guard (Pandoc's tex_math_dollars rule) for lone dollars: an
+ * opener needs non-whitespace right after it; a closer needs non-whitespace
+ * right before it and no digit right after it. "$110, then ... to $111.50"
+ * is therefore prose, while $x$ and $f(x) = 2$ stay math. Only spaces count
+ * as the gap: JSON-escape debris (FF from \forall, TAB from \to, LF from \nu)
+ * is swallowed TeX, so it must not hide a span from escape restoration. */
+const gap = (char: string | undefined) => char === undefined || char === " " || char === " ";
+const dollarCanOpen = (text: string, i: number) => !gap(text[i + 1]);
+const dollarCanClose = (text: string, i: number) => !gap(text[i - 1]) && !/\d/.test(text[i + 1] ?? "");
+
 /** Mirrors the app's native dollar-run and legacy-delimiter conventions,
- * with code and blank paragraphs as inline boundaries. */
+ * with code and blank paragraphs as inline boundaries. Lone dollars follow
+ * the currency guard; transformMathDelimiters escapes the ones left as prose
+ * so the Markdown renderer agrees. */
 export function readContentSpans(text: string): ContentSpan[] {
 	const spans: ContentSpan[] = [];
 	const literals = literalRanges(text);
@@ -66,12 +78,18 @@ export function readContentSpans(text: string): ContentSpan[] {
 					if (match && match[2]!.length >= size) { at = start + match[1]!.length; close = match[2]!; after = at + close.length; break; }
 					start = next;
 				}
-			} else {
+			} else if (size > 1 || dollarCanOpen(text, i)) {
 				for (let j = i + size; j < text.length;) {
 					if (j >= barrier || blankLine.test(text.slice(j))) break;
 					if (text[j] === "$" && !escaped(text, j)) {
 						const n = runLength(text, j, "$");
-						if (n === size) { at = j; close = open; after = j + n; break; }
+						if (n === size) {
+							// The FIRST same-size run decides: a lone dollar that
+							// cannot close ends the attempt (Markdown would close
+							// there), so the opener is prose currency.
+							if (size === 1 && !dollarCanClose(text, j)) break;
+							at = j; close = open; after = j + n; break;
+						}
 						j += n;
 					} else j++;
 				}
