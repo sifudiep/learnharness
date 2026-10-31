@@ -37,7 +37,7 @@ function literalRanges(text: string): Array<{ start: number; end: number }> {
  * is therefore prose, while $x$ and $f(x) = 2$ stay math. Only spaces count
  * as the gap: JSON-escape debris (FF from \forall, TAB from \to, LF from \nu)
  * is swallowed TeX, so it must not hide a span from escape restoration. */
-const gap = (char: string | undefined) => char === undefined || char === " " || char === " ";
+const gap = (char: string | undefined) => char === undefined || char === " " || char === "\u00a0";
 const dollarCanOpen = (text: string, i: number) => !gap(text[i + 1]);
 const dollarCanClose = (text: string, i: number) => !gap(text[i - 1]) && !/\d/.test(text[i + 1] ?? "");
 
