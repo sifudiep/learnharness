@@ -28,6 +28,7 @@ import { blurAfterPointerClick } from "@/components/focus-hygiene";
 import { dockStateKey } from "@/components/dock-state-key";
 import { QueuedSteersBody, type QueuedSteerLine } from "@/components/queued-steers";
 import { DictationBar, finishDictation, joinDictation, useDictation } from "@/components/dictation";
+import { clearAnswerDraft, loadAnswerDraft, saveAnswerDraft } from "@/components/answer-draft-store";
 import { AnswerPlayButton, ANSWER_ATTR, HighlightHoverBadge, PART_ATTR, SpeedPill, useReadAloud, useVoice, VoiceButton, VoicePauseButton, VoiceStopButton } from "@/components/voice";
 import { useFieldCycle } from "@/components/field-cycle";
 import { JobsContext } from "@/components/jobs-context";
@@ -57,7 +58,7 @@ import { PracticeDock } from "@/components/practice-dock";
 import { ThinkingCard, type PracticeThinkingData } from "@/components/practice-cards";
 import { GraphContextCard, type GraphContextData } from "@/components/graph-context-card";
 import { TopBar } from "@/components/top-bar";
-import type { ArtifactPartProps, JobRecord, Phase3, QuestionAnswerData, QuestionFormDraft, TurnUsage, SessionPricing } from "@/src/core";
+import type { ArtifactPartProps, JobRecord, Phase3, QuestionAnswerData, QuestionDraft, QuestionFormDraft, TurnUsage, SessionPricing } from "@/src/core";
 import type { LhViewMessage } from "@/src/core";
 import { PhaseChip, PhaseDivider } from "@/components/phase-divider";
 import {
@@ -531,22 +532,39 @@ export function Chat({
 		window.addEventListener(kbdEventForChat("toggle-user-thinking"), onToggle);
 		return () => window.removeEventListener(kbdEventForChat("toggle-user-thinking"), onToggle);
 	}, []);
-	const applyReadingThinking = useCallback((v: string) => {
-		readingThinkingRef.current = v;
-		setReadingThinking(v);
-	}, []);
+	const applyReadingThinking = useCallback(
+		(v: string) => {
+			readingThinkingRef.current = v;
+			setReadingThinking(v);
+			// The reading channel rides the answer: it survives a reload too
+			// (owner, 2026-11-01) — synchronous, so a closing tab's dictation
+			// flush lands in storage.
+			const q = pendingRef.current;
+			if (q) saveAnswerDraft(chatId, q.toolCallId, { readingThinking: v });
+		},
+		[chatId],
+	);
 	const clearReadingThinking = useCallback(() => {
 		readingThinkingRef.current = "";
 		setReadingThinking("");
 	}, []);
 	const pendingQuestionId = pending?.toolCallId ?? null;
+	/* THE STORED DRAFT (owner, 2026-11-01): the pending question's answer,
+	 * mirrored to localStorage per chat, restores after a reload. Loaded
+	 * AFTER mount (the server render has no storage — hydration stays
+	 * clean); the dock remounts onto it via its key. */
+	const [storedDraft, setStoredDraft] = useState<{ id: string; draft: QuestionDraft } | null>(null);
 	useEffect(() => {
 		// Different calls never share a draft; a failed submission of THIS
 		// call restores the reading channel alongside the form's snapshot.
-		const reading = pendingQuestionId ? questionDraft(pendingQuestionId)?.readingThinking ?? "" : "";
+		const stored = pendingQuestionId ? loadAnswerDraft(chatId, pendingQuestionId) : undefined;
+		setStoredDraft(pendingQuestionId && stored ? { id: pendingQuestionId, draft: stored } : null);
+		const reading = pendingQuestionId
+			? questionDraft(pendingQuestionId)?.readingThinking ?? stored?.readingThinking ?? ""
+			: "";
 		readingThinkingRef.current = reading;
 		setReadingThinking(reading);
-	}, [pendingQuestionId, questionDraft]);
+	}, [pendingQuestionId, questionDraft, chatId]);
 
 	// The phase at every message (one linear fold): the transcript draws a
 	// color-coded dotted divider at each boundary; the header chip reads the
@@ -1629,8 +1647,14 @@ export function Chat({
 				    fold) and NEVER overlaps the composer. */}
 				<DockOverlay
 					pending={pending}
-					initialQuestionDraft={pending ? questionDraft(pending.toolCallId)?.form : undefined}
+					initialQuestionDraft={
+						pending
+							? questionDraft(pending.toolCallId)?.form ??
+								(storedDraft?.id === pending.toolCallId ? storedDraft.draft.form : undefined)
+							: undefined
+					}
 					onSaveQuestionDraft={(form) => { if (pending) saveQuestionDraft(pending.toolCallId, { form }); }}
+					onQuestionDraftChange={(form) => { if (pending) saveAnswerDraft(chatId, pending.toolCallId, { form }); }}
 					practice={activeProblem}
 					compactionRunning={compacting}
 					onSubmitThinking={submitThinking}
@@ -1714,6 +1738,8 @@ export function Chat({
 						// The pending-id effect clears this only when the question
 						// actually leaves. An offline preflight keeps the draft visible.
 						submitAnswer(pending.tool, pending.toolCallId, reading ? { ...output, readingThinking: reading } : output);
+						// Submitted (or dismissed): the stored draft has done its job.
+						clearAnswerDraft(chatId);
 					}}
 				/>
 				</Conversation>
@@ -1871,6 +1897,7 @@ function DockOverlay({
 	pending,
 	initialQuestionDraft,
 	onSaveQuestionDraft,
+	onQuestionDraftChange,
 	practice,
 	compactionRunning,
 	onSubmitThinking,
@@ -1895,6 +1922,8 @@ function DockOverlay({
 	pending: ReturnType<typeof findPendingToolCall>;
 	initialQuestionDraft?: QuestionFormDraft;
 	onSaveQuestionDraft: (draft: QuestionFormDraft) => void;
+	/** Every form edit — mirrored to localStorage per chat (reload-safe). */
+	onQuestionDraftChange: (draft: QuestionFormDraft) => void;
 	/** Compaction running for this chat (round 14) — the docks' submit
 	 *  affordance gate (the server's registry is the real one). */
 	compactionRunning: boolean;
@@ -2353,6 +2382,9 @@ function DockOverlay({
 					>
 							{pending ? (
 								<QuestionDock
+									// A draft restored from storage after mount remounts the
+									// form onto it (useState initializers are mount-only).
+									key={`${pending.toolCallId}${initialQuestionDraft ? ":draft" : ""}`}
 									toolName={pending.tool as "quiz" | "probe" | "ask_user_question" | "explain" | "recall"}
 									toolCallId={pending.toolCallId}
 									input={pending.input as never}
@@ -2363,6 +2395,7 @@ function DockOverlay({
 									onSubmit={onSubmitAnswer}
 									initialDraft={initialQuestionDraft}
 									onSaveDraft={onSaveQuestionDraft}
+									onDraftChange={onQuestionDraftChange}
 									onEscape={dictationCancel}
 									dictationClaim={!revealPending}
 									compactionRunning={compactionRunning}

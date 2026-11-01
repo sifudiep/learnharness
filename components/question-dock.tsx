@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownIcon, ChevronRightIcon, PlayIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
+	DICTATION_UNLOAD_EVENT,
 	finishDictation,
 	isDictationActive,
 	joinDictation,
@@ -82,6 +83,10 @@ export interface QuestionDockProps {
 	/** Restore only this call's unconfirmed submission after recovery. */
 	initialDraft?: QuestionFormDraft;
 	onSaveDraft?: (draft: QuestionFormDraft) => void;
+	/** Every edit of the form (and a closing tab mid-dictation) — the page
+	 *  mirrors it to localStorage so a restart never loses the answer
+	 *  (owner, 2026-11-01). Not fired for the untouched first mount. */
+	onDraftChange?: (draft: QuestionFormDraft) => void;
 	/** Escape in a question field stops dictation (STT wave) — threaded
 	 *  from the page that owns the dictation hook. */
 	onEscape?: () => void;
@@ -113,6 +118,7 @@ export function QuestionDock({
 	onSubmit,
 	initialDraft,
 	onSaveDraft,
+	onDraftChange,
 	onEscape,
 	phase = "probe",
 	dictationClaim = true,
@@ -170,6 +176,7 @@ export function QuestionDock({
 					onSubmit={onSubmit}
 					initialDraft={initialDraft}
 					onSaveDraft={onSaveDraft}
+					onDraftChange={onDraftChange}
 					onEscape={onEscape}
 					dictationClaim={dictationClaim}
 					compactionRunning={compactionRunning}
@@ -267,6 +274,7 @@ function QuestionDockForm({
 	onSubmit,
 	initialDraft,
 	onSaveDraft,
+	onDraftChange,
 	onEscape,
 	dictationClaim = true,
 	compactionRunning = false,
@@ -387,6 +395,40 @@ function QuestionDockForm({
 			: sel.dontKnow || (sel.otherSelected && other.trim().length > 0) || sel.selected.size > 0;
 	const canSubmit = hasAnswer(text) || (qd.mode === "text" && dictating && dictationClaim);
 
+	/* THE DRAFT MIRROR (owner, 2026-11-01): every edit reaches the page,
+	 * which keeps it in localStorage per chat — a reload restores it. The
+	 * untouched first mount stays quiet (it would overwrite a stored draft
+	 * with an empty form), unless it IS a restored draft. Refs carry the
+	 * dictation targets, so the closing-tab flush saves the landed words. */
+	const snapshot = (): QuestionFormDraft => ({
+		selection: { ...sel, selected: new Set(sel.selected) },
+		thinking: thinkingTextRef.current,
+		other,
+		text: answerTextRef.current,
+		confidenceIndex: confIdx,
+	});
+	const snapshotRef = useRef(snapshot);
+	snapshotRef.current = snapshot;
+	const onDraftChangeRef = useRef(onDraftChange);
+	onDraftChangeRef.current = onDraftChange;
+	// "Untouched" is judged by CONTENT, not by a first-run flag: dev
+	// StrictMode re-runs mount effects, and a flag spent on the first run
+	// let the second save an empty form over the stored draft.
+	const draftKey = (f: QuestionFormDraft) => JSON.stringify({ ...f, selection: { ...f.selection, selected: [...f.selection.selected] } });
+	const mountedAs = useRef<string | null>(null);
+	mountedAs.current ??= draftKey(snapshot());
+	const draftDirty = useRef(initialDraft !== undefined); // a restored draft re-saves
+	useEffect(() => {
+		const now = snapshotRef.current();
+		if (!draftDirty.current && draftKey(now) === mountedAs.current) return;
+		draftDirty.current = true; // once edited, every state is saved (clearing too)
+		onDraftChangeRef.current?.(now);
+	}, [sel, thinking, other, text, confIdx]);
+	useEffect(() => {
+		const onLeave = () => onDraftChangeRef.current?.(snapshotRef.current());
+		window.addEventListener(DICTATION_UNLOAD_EVENT, onLeave);
+		return () => window.removeEventListener(DICTATION_UNLOAD_EVENT, onLeave);
+	}, []);
 
 	const submit = () => {
 		if (!canSubmit || compactionRunning) return;

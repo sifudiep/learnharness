@@ -183,6 +183,10 @@ export function useDictationActive(): boolean {
 	);
 }
 
+/** Fired SYNCHRONOUSLY right after a closing tab/reload pushed a live
+ *  run's buffered words into their field (owner, 2026-11-01): the field
+ *  owners persist their drafts on it — setState never renders in time. */
+export const DICTATION_UNLOAD_EVENT = "lh:dictation-unload-flush";
 
 /* The finisher registry: submit paths FAR from the hook's owner (the
  * pending question's dock) need finish() without a prop bridge. Same
@@ -565,6 +569,24 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 		window.addEventListener("lh:kbd-cancel-dictation", cancel);
 		return () => window.removeEventListener("lh:kbd-cancel-dictation", cancel);
 	}, [cancel]);
+	/* Closing the tab / reloading mid-dictation (owner, 2026-11-01): the
+	 * run's finals still sit in the deferred buffer — push them into their
+	 * field NOW (the targets update their ref mirrors synchronously) and
+	 * announce it, so the answer-draft store saves them before the page
+	 * dies. flush() empties the buffer, so a second event is a no-op. */
+	useEffect(() => {
+		const onLeave = () => {
+			if (!dictationActiveFlag) return;
+			flush();
+			window.dispatchEvent(new Event(DICTATION_UNLOAD_EVENT));
+		};
+		window.addEventListener("pagehide", onLeave);
+		window.addEventListener("beforeunload", onLeave);
+		return () => {
+			window.removeEventListener("pagehide", onLeave);
+			window.removeEventListener("beforeunload", onLeave);
+		};
+	}, [flush]);
 
 	return {
 		phase,
