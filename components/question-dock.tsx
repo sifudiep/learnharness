@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownIcon, ChevronRightIcon, PlayIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { finishDictation, isDictationActive, joinDictation, useDictationTarget } from "@/components/dictation";
+import {
+	finishDictation,
+	isDictationActive,
+	joinDictation,
+	useDictationActive,
+	useDictationTarget,
+} from "@/components/dictation";
 import { useEnterSubmits } from "@/components/enter-submits";
 import { ToolContentResponse } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
@@ -370,10 +376,17 @@ function QuestionDockForm({
 
 	const toggle = (idx: number) => setSel(toggleOption(selectMode, sel, idx));
 
-	const canSubmit =
+	/* SUBMIT WHILE DICTATING (owner, 2026-11-01): a text answer being
+	 * dictated is still in the run's buffer — the field looks empty, yet the
+	 * answer is coming. The button stays pressable; submit() finishes the
+	 * run first and doSubmit re-checks with the landed words. */
+	const dictating = useDictationActive();
+	const hasAnswer = (answerText: string) =>
 		qd.mode === "text"
-			? text.trim().length > 0
+			? answerText.trim().length > 0
 			: sel.dontKnow || (sel.otherSelected && other.trim().length > 0) || sel.selected.size > 0;
+	const canSubmit = hasAnswer(text) || (qd.mode === "text" && dictating && dictationClaim);
+
 
 	const submit = () => {
 		if (!canSubmit || compactionRunning) return;
@@ -390,7 +403,8 @@ function QuestionDockForm({
 		void finishDictation().then(doSubmit);
 	};
 	const doSubmit = () => {
-		if (!canSubmit) return;
+		// Re-checked from the ref: the dictated words landed after the await.
+		if (!hasAnswer(answerTextRef.current)) return;
 		const req: AnswerRequest = {
 			dontKnow: sel.dontKnow,
 			values: [...sel.selected].map((i) => qd.options[i]!.value),

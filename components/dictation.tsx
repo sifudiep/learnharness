@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Loader2Icon, MicIcon } from "lucide-react";
 import { useSettingsDialog } from "@/components/settings/settings-dialog";
 import { Hint } from "@/components/ui/hint";
@@ -163,6 +163,27 @@ export function isDictationActive(): boolean {
 	return dictationActiveFlag;
 }
 
+/* The same truth, REACTIVE (owner, 2026-11-01): "Submit answer" stays
+ * pressable while dictating — the words wait in the run's buffer, so the
+ * field alone can't say there is an answer coming. */
+const activeListeners = new Set<() => void>();
+function setDictationActive(v: boolean): void {
+	if (dictationActiveFlag === v) return;
+	dictationActiveFlag = v;
+	for (const l of activeListeners) l();
+}
+export function useDictationActive(): boolean {
+	return useSyncExternalStore(
+		(l) => {
+			activeListeners.add(l);
+			return () => activeListeners.delete(l);
+		},
+		() => dictationActiveFlag,
+		() => false,
+	);
+}
+
+
 /* The finisher registry: submit paths FAR from the hook's owner (the
  * pending question's dock) need finish() without a prop bridge. Same
  * module-level pattern as questionTarget — one window, one instance,
@@ -278,7 +299,7 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 	/** Full teardown of one run's machinery. Idempotent; generation-guarded by callers. */
 	const cleanup = useCallback(() => {
 		genRef.current++;
-		dictationActiveFlag = false;
+		setDictationActive(false);
 		flush(); // the deferred transcript appears when the run ends (owner round 2)
 		if (safetyRef.current) {
 			clearTimeout(safetyRef.current);
@@ -375,7 +396,7 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 	);
 
 	const start = useCallback(async () => {
-		dictationActiveFlag = true;
+		setDictationActive(true);
 		setError(null);
 		setPhase("connecting");
 		reconnectsRef.current = 0;
