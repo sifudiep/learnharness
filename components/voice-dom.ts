@@ -2,12 +2,12 @@
  * Manual reading reads the RENDERED answer (voice wave 2, owner
  * 2026-10-28): ▶ and right-click start from what is on screen, so a
  * right-click maps to the exact sentence clicked. Rendered KaTeX is spoken
- * out from its TeX (math-speech.ts), <pre> as "(code)"; images, svg, buttons and aria-hidden
+ * out from its TeX (math-speech.ts), <pre> as "(code)", a rendered chart as "(chart)"; images, svg, buttons and aria-hidden
  * chrome are skipped. Every text node (and every atomic placeholder)
  * records where it starts in the speech, so a caret position maps back.
  */
 
-import { CODE_WORD, EQUATION_WORD, mathToSpeech } from "@/src/core";
+import { CHART_WORD, CODE_WORD, EQUATION_WORD, mathToSpeech } from "@/src/core";
 
 export interface PassageSpeech {
 	text: string;
@@ -44,6 +44,13 @@ export function passageSpeech(root: Node): PassageSpeech {
 			const tex = el.querySelector('annotation[encoding="application/x-tex"]')?.textContent;
 			marks.push({ node: el, start: text.length });
 			text += ` ${tex ? mathToSpeech(tex) : EQUATION_WORD} `;
+			return;
+		}
+		if (el.hasAttribute("data-lh-chart")) {
+			// A rendered candlestick chart: one word, never its axis labels.
+			endBlock();
+			marks.push({ node: el, start: text.length });
+			text += `${CHART_WORD} `;
 			return;
 		}
 		if (tag === "PRE") {

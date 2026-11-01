@@ -917,7 +917,7 @@ export function useReadAloud({
 				modifier: e.shiftKey || e.metaKey || e.ctrlKey || e.altKey,
 				travel: Math.hypot(x - start.x, y - start.y),
 				selectionCollapsed: window.getSelection()?.isCollapsed ?? true,
-				interactive: !!target.closest("a, button, [role=button], input, textarea, select, summary, svg, img, figure, [data-lh-figure]"),
+				interactive: !!target.closest("a, button, [role=button], input, textarea, select, summary, svg, img, figure, [data-lh-figure], [data-lh-chart]"),
 			});
 			if (!clean) return;
 			if (clickTimer.current) clearTimeout(clickTimer.current);

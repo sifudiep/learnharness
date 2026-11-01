@@ -145,8 +145,10 @@ export function saveVoicePrefs(patch: Partial<VoicePrefs>): VoicePrefs {
 // ─── markdown → speech ──────────────────────────────────────────────────────
 
 export const CODE_WORD = "(code)";
+/** A ```chart fence (a rendered candlestick chart) speaks as one word. */
+export const CHART_WORD = "(chart)";
 
-type MdNode = { type: string; value?: string; children?: MdNode[] };
+type MdNode = { type: string; value?: string; lang?: string | null; children?: MdNode[] };
 
 /** GFM alert markers ("> [!IMPORTANT]") render as callout chrome, never
  *  as words — never speak them (md-blocks.tsx's marker grammar). */
@@ -182,7 +184,7 @@ export function speakableText(markdown: string): string {
 		switch (node.type) {
 			case "code":
 				endBlock();
-				blocks.push(CODE_WORD);
+				blocks.push(node.lang === "chart" ? CHART_WORD : CODE_WORD);
 				return;
 			case "text":
 				line += unslot(node.value ?? "");
