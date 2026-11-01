@@ -77,6 +77,8 @@ export * from "./auth-keys.ts";
 export * from "./keyboard.ts";
 // voice.ts: read-aloud — Aura-2 voice catalog, markdown → speech, streaming cuts (pure, browser-safe).
 export * from "./voice.ts";
+// chart-spec.ts: the ```chart fence — candlestick data parsed + validated (pure, browser-safe).
+export * from "./chart-spec.ts";
 // math-speech.ts: equations → spoken words for read-aloud (speech-rule-engine, lazy-loaded).
 export * from "./math-speech.ts";
 export * from "./coverage.ts";

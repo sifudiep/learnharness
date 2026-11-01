@@ -39,6 +39,7 @@ import {
 import type { ExtraProps } from "streamdown";
 import { MERMAID_FONT_SIZE, renderMermaid } from "@/components/mermaid-render";
 import { MermaidError } from "@/components/mermaid-error";
+import { StockChart } from "@/components/stock-chart";
 import { blurAfterPointerClick } from "@/components/focus-hygiene";
 import { chartSize, useSessionMermaid } from "@/components/session-overlay";
 import { Hint } from "@/components/ui/hint";
@@ -251,6 +252,15 @@ export function MarkdownCode(props: ComponentProps<"code"> & ExtraProps) {
 	const source = codeSource(children);
 
 	if (language === "mermaid") return <MermaidInline chart={source} />;
+	// Price action as real candlesticks (stock-chart wave, 2026-11-01).
+	if (language === "chart")
+		return (
+			<StockChart
+				source={source}
+				incomplete={incomplete}
+				corner={<CopyCorner getText={() => source} label="Copy chart data" />}
+			/>
+		);
 
 	const startMatch = /startLine=(\d+)/.exec(meta);
 	const startLine = startMatch ? Number.parseInt(startMatch[1]!, 10) : undefined;
