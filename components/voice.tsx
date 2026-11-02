@@ -275,13 +275,33 @@ export function stopVoice(): void {
  *  typing surface or on a focused control (Space presses it), never when
  *  a surface claimed it (the question dock's row pick). */
 export function onSpaceKey(e: KeyboardEvent): void {
-	if (e.key !== " " || e.defaultPrevented || e.repeat || e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
-	if (isTypingSurface(e)) return;
-	const t = e.target as Element | null;
-	if (t?.closest?.("button, a, select, summary, [role=button], [role=checkbox], [role=switch], [role=radio], [role=option]")) return;
-	if (!isVoiceSpeaking() && !cursor) return;
+	if (e.key === " " && !e.repeat) spaceTapArmed = false; // every press decides afresh
+	if (!spaceIsOurs(e)) return;
+	// Down only claims it (no page scroll); the TAP is decided on release —
+	// a held Space is hold-to-dictate (dictation.tsx swallows its repeats
+	// and its release), so a hold never pauses (owner, 2026-11-02).
+	e.preventDefault();
+	spaceTapArmed = true;
+}
+
+/** Space's release: a tap (armed on down, not swallowed as a hold) pauses. */
+export function onSpaceUp(e: KeyboardEvent): void {
+	if (e.key !== " ") return;
+	const armed = spaceTapArmed;
+	spaceTapArmed = false;
+	if (!armed || e.defaultPrevented) return;
 	e.preventDefault();
 	togglePause();
+}
+
+let spaceTapArmed = false;
+
+function spaceIsOurs(e: KeyboardEvent): boolean {
+	if (e.key !== " " || e.defaultPrevented || e.repeat || e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return false;
+	if (isTypingSurface(e)) return false;
+	const t = e.target as Element | null;
+	if (t?.closest?.("button, a, select, summary, [role=button], [role=checkbox], [role=switch], [role=radio], [role=option]")) return false;
+	return isVoiceSpeaking() || cursor !== null;
 }
 
 /** P / the ⏸ button: freeze or resume playback (idle = no-op). Text that
@@ -725,9 +745,11 @@ export function useVoice(): Voice {
 	useEffect(() => {
 		window.addEventListener("keydown", onCursorKey);
 		window.addEventListener("keydown", onSpaceKey);
+		window.addEventListener("keyup", onSpaceUp);
 		return () => {
 			window.removeEventListener("keydown", onCursorKey);
 			window.removeEventListener("keydown", onSpaceKey);
+			window.removeEventListener("keyup", onSpaceUp);
 		};
 	}, []);
 	// P (the registry's bare key — never fires in a text field).

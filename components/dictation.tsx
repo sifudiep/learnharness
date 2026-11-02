@@ -199,6 +199,24 @@ export function finishDictation(): Promise<void> {
 	return dictationFinisher ? dictationFinisher() : Promise.resolve();
 }
 
+/** Hold-to-dictate: the first Space press of a hold already typed a space
+ *  into the focused field — take it back (execCommand keeps React's
+ *  controlled value and the undo stack in sync). */
+function takeBackTypedSpace(target: EventTarget | null): void {
+	const el = target as HTMLElement | null;
+	if (!el) return;
+	if (el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && /^(text|search|url|email|)$/.test(el.type))) {
+		const at = el.selectionStart ?? 0;
+		if (at > 0 && at === el.selectionEnd && el.value[at - 1] === " ") document.execCommand("delete");
+	} else if (el.isContentEditable) {
+		const sel = window.getSelection();
+		const node = sel?.anchorNode;
+		if (sel?.isCollapsed && node?.nodeType === 3 && sel.anchorOffset > 0 && node.nodeValue?.[sel.anchorOffset - 1] === " ") {
+			document.execCommand("delete");
+		}
+	}
+}
+
 /** Join a dictated final onto the current text (shared separator rule). */
 export function joinDictation(current: string, final: string): string {
 	return current ? current.replace(/\s+$/, "") + " " + final : final;
@@ -569,6 +587,63 @@ export function useDictation({ append }: { append: (text: string) => void }): Di
 		window.addEventListener("lh:kbd-cancel-dictation", cancel);
 		return () => window.removeEventListener("lh:kbd-cancel-dictation", cancel);
 	}, [cancel]);
+	/* HOLD SPACE TO DICTATE (owner, 2026-11-02 — the Claude Code method),
+	 * alongside ⌥D and the mic button, in ANY focus — text fields included.
+	 * A tap stays a tap: the first keydown passes through untouched (types
+	 * its space, pauses read-aloud on release…). Only the key's AUTO-REPEAT
+	 * marks a hold: from there the repeats are swallowed, the one space the
+	 * first press typed is taken back, and a run starts; releasing Space
+	 * stops it and the words land in the field. Window CAPTURE phase, so no
+	 * surface (the question rows, the calculator) can claim it first. A run
+	 * that was already live (⌥D) is left alone by the hold. */
+	const phaseRef = useRef(phase);
+	phaseRef.current = phase;
+	const startRef = useRef(start);
+	startRef.current = start;
+	const stopRef = useRef(stop);
+	stopRef.current = stop;
+	useEffect(() => {
+		const hold = { holding: false, started: false };
+		const plainSpace = (e: KeyboardEvent) => e.code === "Space" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey;
+		const release = () => {
+			hold.holding = false;
+			if (hold.started) {
+				hold.started = false;
+				stopRef.current();
+			}
+		};
+		const onDown = (e: KeyboardEvent) => {
+			if (!plainSpace(e) || !e.repeat) return;
+			e.preventDefault();
+			e.stopPropagation();
+			if (hold.holding) return;
+			hold.holding = true;
+			takeBackTypedSpace(e.target);
+			if (phaseRef.current === "idle") {
+				hold.started = true;
+				void startRef.current();
+			}
+		};
+		const onUp = (e: KeyboardEvent) => {
+			if (e.code !== "Space" || !hold.holding) return;
+			e.preventDefault(); // no button activation / tap action on release
+			e.stopPropagation();
+			release();
+		};
+		// The window losing focus mid-hold never delivers the keyup.
+		const onBlur = () => {
+			if (hold.holding) release();
+		};
+		window.addEventListener("keydown", onDown, true);
+		window.addEventListener("keyup", onUp, true);
+		window.addEventListener("blur", onBlur);
+		return () => {
+			window.removeEventListener("keydown", onDown, true);
+			window.removeEventListener("keyup", onUp, true);
+			window.removeEventListener("blur", onBlur);
+		};
+	}, []);
+
 	/* Closing the tab / reloading mid-dictation (owner, 2026-11-01): the
 	 * run's finals still sit in the deferred buffer — push them into their
 	 * field NOW (the targets update their ref mirrors synchronously) and
