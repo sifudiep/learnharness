@@ -29,6 +29,7 @@ import { dockStateKey } from "@/components/dock-state-key";
 import { QueuedSteersBody, type QueuedSteerLine } from "@/components/queued-steers";
 import { DictationBar, finishDictation, joinDictation, useDictation } from "@/components/dictation";
 import { clearAnswerDraft, loadAnswerDraft, saveAnswerDraft } from "@/components/answer-draft-store";
+import { CalculatorPanel, useCalculator } from "@/components/calculator";
 import { AnswerPlayButton, ANSWER_ATTR, HighlightHoverBadge, PART_ATTR, SpeedPill, useReadAloud, useVoice, VoiceButton, VoicePauseButton, VoiceStopButton } from "@/components/voice";
 import { useFieldCycle } from "@/components/field-cycle";
 import { JobsContext } from "@/components/jobs-context";
@@ -49,7 +50,7 @@ import { PlanBlock, PlanPopup, latestTree } from "@/components/plan-block";
 import { PlanMarginalia, planExists } from "@/components/plan-window";
 import { MermaidOverlay, SessionMermaidContext } from "@/components/session-overlay";
 import { AbortTurnDialog, type AbortMode } from "@/components/abort-turn-dialog";
-import { ArrowRightIcon, DumbbellIcon, WaypointsIcon } from "lucide-react";
+import { ArrowRightIcon, CalculatorIcon, DumbbellIcon, WaypointsIcon } from "lucide-react";
 import type { PlanBlockData } from "@/src/core";
 import { QuestionDock } from "@/components/question-dock";
 import { SessionFind } from "@/components/session-find";
@@ -465,6 +466,8 @@ export function Chat({
 	 * the pending question speak while voice is on (components/voice.tsx).
 	 * Every send/answer path below interrupts the old speech first. */
 	const voice = useVoice();
+	// The calculator panel (owner, 2026-11-02): ⌥C or the top-bar button.
+	const calc = useCalculator();
 	const readAloud = useReadAloud({ messages, busy, pending, voice });
 	const interruptVoice = readAloud.interrupt;
 
@@ -1304,6 +1307,24 @@ export function Chat({
 							<div className="min-w-4 flex-1" aria-hidden="true" />
 					</>
 					)}
+					{/* The calculator toggle (owner, 2026-11-02) — ⌥C. */}
+					<Hint label={calc.open ? "Close calculator" : "Calculator"} action="toggle-calculator" side="bottom">
+						<button
+							type="button"
+							data-testid="calculator-toggle"
+							aria-pressed={calc.open}
+							aria-label={calc.open ? "Close calculator" : "Open calculator"}
+							onClick={(e) => {
+								blurAfterPointerClick(e);
+								calc.toggle();
+							}}
+							className={`lh-no-drag flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-colors hover:border-border hover:text-foreground ${
+								calc.open ? "border-border text-foreground" : "border-border/80 text-muted-foreground"
+							}`}
+						>
+							<CalculatorIcon className="size-3.5" aria-hidden />
+						</button>
+					</Hint>
 					{/* The plan chip (owner, plan-placement round): session-level
 					    structure beside the phase chip — access to the full-DAG popup
 					    at every width; the marginalia is the wide-screen glance view. */}
@@ -1743,6 +1764,10 @@ export function Chat({
 					}}
 				/>
 				</Conversation>
+				{/* The calculator (owner, 2026-11-02): a right-hand panel of the
+				    session area — the conversation (and its centered dock) narrows
+				    beside it, so chat + calculator fill the area as one pair. */}
+				{calc.open && <CalculatorPanel calc={calc} />}
 
 				{/* The session-scoped focuses (chrome-melt wave, 2026-09-19): mounted
 				    INSIDE the session area — absolute inset-0 siblings of the scroller,
