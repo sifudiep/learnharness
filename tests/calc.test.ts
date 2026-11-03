@@ -46,9 +46,11 @@ describe("evaluateCalc", () => {
 });
 
 describe("display", () => {
-	it("formatCalc groups thousands and trims decimals", () => {
+	it("formatCalc groups thousands and rounds to 2 decimals", () => {
 		assert.equal(formatCalc(1234567.5), "1,234,567.5");
 		assert.equal(formatCalc(58), "58");
+		assert.equal(formatCalc(58.8235294118), "58.82");
+		assert.equal(formatCalc(0.005), "0.01");
 	});
 
 	it("previewCalc ignores a dangling operator or open paren", () => {

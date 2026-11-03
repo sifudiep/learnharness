@@ -133,9 +133,10 @@ export function evaluateCalc(src: string): CalcResult {
 	}
 }
 
-/** The display form: grouped thousands, up to 10 decimals, no float tail. */
+/** The display form: grouped thousands, rounded to 2 decimals — prices
+ *  and share counts (owner, 2026-11-03); no float tail. */
 export function formatCalc(value: number): string {
-	return value.toLocaleString("en-US", { maximumFractionDigits: 10 });
+	return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
 /** The live preview while typing: the expression without a dangling
