@@ -15,6 +15,7 @@ import type { ChatStore } from "../core/ports.ts";
 import type { ChatRecord, ChatSettings, ChatSummary, ExtractionRunUsage, PlanTree, TurnUsage } from "../core/contracts.ts";
 import { CURRENT_CHAT_VERSION } from "../core/contracts.ts";
 import type { LhMessage } from "../core/native-messages.ts";
+import { wasShared, type ChartDrawingsEntry } from "../core/chart-drawings.ts";
 import { activeProblemOf, danglingQuestionOf } from "../core/native-messages.ts";
 import { phaseAt3Lh } from "../core/phases.ts";
 
@@ -84,7 +85,8 @@ function listChats(): ChatSummary[] {
 			.filter((f) => f.endsWith(".json"))
 			.map((f) => getChat(f.slice(0, -5)))
 			.filter((r): r is ChatRecord => r !== null)
-			.map(({ messages, tree, turns, extractions, ...summary }) => {
+			// chartDrawings rides only the full record (never the sidebar payload).
+			.map(({ messages, tree, turns, extractions, chartDrawings: _drawings, ...summary }) => {
 				// Per-record isolation (Wave B): a record whose messages fail the
 				// projection (e.g. pre-Wave-B UIMessage-format scratch — the
 				// zero-back-compat wipe makes these "corrupt") must not blank the
@@ -167,6 +169,24 @@ function saveSettings(id: string, settings: ChatSettings): void {
 	writeChat(record);
 }
 
+/** Persist one chart's learner drawings (owner, 2026-11-04). Silent like
+ * saveSettings — not conversation activity (no updatedAt bump, no event);
+ * an empty list removes the chart's entry. Safe mid-turn: every writer
+ * re-reads the record and changes only its own field. */
+function saveChartDrawings(id: string, key: string, entry: ChartDrawingsEntry): void {
+	const record = getChat(id);
+	if (!record) throw new Error(`Chat not found: ${id}`);
+	const map = { ...(record.chartDrawings ?? {}) };
+	// An emptied chart keeps its (empty) entry while the teacher has seen
+	// drawings on it — the next turn reports "removed all"; never-shared
+	// empties just drop out.
+	if (entry.drawings.length === 0 && !wasShared(record.messages, key)) delete map[key];
+	else map[key] = entry;
+	if (Object.keys(map).length) record.chartDrawings = map;
+	else delete record.chartDrawings;
+	writeChat(record);
+}
+
 /** Rename a session (the header's click-to-edit title, 2026-09-17). Like
  * saveSettings, a rename is NOT conversation activity: updatedAt stays put
  * so sidebar order never churns. Same fallback as createChat — the empty
@@ -212,6 +232,7 @@ export const chatStore: ChatStore = {
 	saveMessages,
 	saveTree,
 	saveSettings,
+	saveChartDrawings,
 	renameChat,
 	deleteChat,
 	appendTurnUsage,

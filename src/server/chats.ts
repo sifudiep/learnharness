@@ -3,6 +3,7 @@ import { isJobLive } from "../agent/subagents/aborts.ts";
 import { coverageOf } from "../core/coverage.ts";
 import { deleteChatTraces, type ChatDeleteMode, type ChatDeletionStats } from "../core/graph-deletion.ts";
 import { titleFromPrompt } from "../core/contracts.ts";
+import { parseDrawingsPut } from "../core/chart-drawings.ts";
 import { graphRevision } from "./graph.ts";
 import { stores } from "./stores.ts";
 import { isTurnRunning } from "./turn-liveness.ts";
@@ -178,4 +179,15 @@ export function sessionCoverage(chatId: string): SessionCoverage | null {
 		running: extractionStatuses().some((run) => run.kind === "chat" && run.chatId === chatId),
 		lastFoldedAt,
 	};
+}
+
+/** PUT /api/chats/[id]/drawings (owner, 2026-11-04): one chart's learner
+ *  drawings, sanitized and saved silently onto the record — the teacher
+ *  sees what changed on the learner's next turn (chart-drawings marker). */
+export function putChartDrawings(chatId: string, body: unknown): Response {
+	const parsed = parseDrawingsPut(body);
+	if (!parsed.ok) return Response.json({ error: parsed.error }, { status: 400 });
+	if (!stores.chatStore.getChat(chatId)) return Response.json({ error: "Unknown chat" }, { status: 404 });
+	stores.chatStore.saveChartDrawings(chatId, parsed.key, parsed.entry);
+	return Response.json({ ok: true, count: parsed.entry.drawings.length });
 }
