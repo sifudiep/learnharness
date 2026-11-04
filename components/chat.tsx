@@ -30,6 +30,7 @@ import { QueuedSteersBody, type QueuedSteerLine } from "@/components/queued-stee
 import { DictationBar, finishDictation, joinDictation, useDictation } from "@/components/dictation";
 import { clearAnswerDraft, loadAnswerDraft, saveAnswerDraft } from "@/components/answer-draft-store";
 import { CalculatorPanel, useCalculator } from "@/components/calculator";
+import { QuickAskIcon, QuickAskPanel, useQuickAsk } from "@/components/quick-ask";
 import { AnswerPlayButton, ANSWER_ATTR, HighlightHoverBadge, PART_ATTR, SpeedPill, useReadAloud, useVoice, VoiceButton, VoicePauseButton, VoiceStopButton } from "@/components/voice";
 import { useFieldCycle } from "@/components/field-cycle";
 import { JobsContext } from "@/components/jobs-context";
@@ -485,6 +486,17 @@ export function Chat({
 	const voice = useVoice();
 	// The calculator panel (owner, 2026-11-02): ⌥C or the top-bar button.
 	const calc = useCalculator();
+	// Quick ask (owner, 2026-11-04): ⌃C (Mac) or the top-bar button — the
+	// SAME right-hand spot as the calculator: opening one closes the other.
+	const quickAsk = useQuickAsk(chatId);
+	const { close: closeCalc } = calc;
+	const { close: closeQuickAsk } = quickAsk;
+	useEffect(() => {
+		if (quickAsk.open) closeCalc();
+	}, [quickAsk.open, quickAsk.focusTick, closeCalc]);
+	useEffect(() => {
+		if (calc.open) closeQuickAsk();
+	}, [calc.open, calc.focusTick, closeQuickAsk]);
 	const readAloud = useReadAloud({ messages, busy, pending, voice });
 	const interruptVoice = readAloud.interrupt;
 
@@ -1342,6 +1354,24 @@ export function Chat({
 							<CalculatorIcon className="size-3.5" aria-hidden />
 						</button>
 					</Hint>
+					{/* Quick ask (owner, 2026-11-04) — ⌃C on Mac. */}
+					<Hint label={quickAsk.open ? "Close quick ask" : "Quick ask"} action="toggle-quick-ask" side="bottom">
+						<button
+							type="button"
+							data-testid="quick-ask-toggle"
+							aria-pressed={quickAsk.open}
+							aria-label={quickAsk.open ? "Close quick ask" : "Open quick ask"}
+							onClick={(e) => {
+								blurAfterPointerClick(e);
+								quickAsk.toggle();
+							}}
+							className={`lh-no-drag flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full border transition-colors hover:border-border hover:text-foreground ${
+								quickAsk.open ? "border-border text-foreground" : "border-border/80 text-muted-foreground"
+							}`}
+						>
+							<QuickAskIcon className="size-3.5" aria-hidden />
+						</button>
+					</Hint>
 					{/* The plan chip (owner, plan-placement round): session-level
 					    structure beside the phase chip — access to the full-DAG popup
 					    at every width; the marginalia is the wide-screen glance view. */}
@@ -1786,6 +1816,7 @@ export function Chat({
 				    session area — the conversation (and its centered dock) narrows
 				    beside it, so chat + calculator fill the area as one pair. */}
 				{calc.open && <CalculatorPanel calc={calc} />}
+				{quickAsk.open && <QuickAskPanel ask={quickAsk} />}
 
 				{/* The session-scoped focuses (chrome-melt wave, 2026-09-19): mounted
 				    INSIDE the session area — absolute inset-0 siblings of the scroller,

@@ -25,6 +25,7 @@ export type KeyAction =
 	| "toggle-voice"
 	| "toggle-voice-pause"
 	| "toggle-calculator"
+	| "toggle-quick-ask"
 	| "open-model-picker"
 	| "cycle-thinking"
 	| "toggle-sidebar"
@@ -58,6 +59,13 @@ export interface KeyActionDef {
 	displayOnly?: boolean;
 }
 
+/** Quick ask's toggle is the PHYSICAL Control key (owner, 2026-11-04):
+ *  "mod" folds ⌘ and Ctrl together, and ⌘C must stay Copy — so it can't be
+ *  a registry dispatch. Mac: ⌃C; elsewhere Ctrl+C is Copy, so ⌃⇧C. The
+ *  listener lives in components/quick-ask.tsx; the row here is display. */
+export const QUICK_ASK_BINDING =
+	typeof navigator !== "undefined" && /mac/i.test(navigator.platform || navigator.userAgent) ? "ctrl+c" : "ctrl+shift+c";
+
 export const KEYBOARD_ACTIONS: readonly KeyActionDef[] = [
 	{ id: "toggle-dictation", label: "Toggle dictation", scope: "global", binding: "alt+d" },
 	{ id: "toggle-voice", label: "Toggle read aloud", scope: "chat", binding: "alt+s" },
@@ -65,6 +73,7 @@ export const KEYBOARD_ACTIONS: readonly KeyActionDef[] = [
 	// dispatcher's input guard); idle (nothing reading/paused) = no-op.
 	{ id: "toggle-voice-pause", label: "Pause/resume reading", scope: "chat", binding: "p" },
 	{ id: "toggle-calculator", label: "Toggle calculator", scope: "chat", binding: "alt+c" },
+	{ id: "toggle-quick-ask", label: "Toggle quick ask", scope: "chat", binding: QUICK_ASK_BINDING, displayOnly: true },
 	{ id: "open-settings", label: "Open settings", scope: "global", binding: "mod+," },
 	{ id: "open-model-picker", label: "Model selector", scope: "global", binding: "mod+k" },
 	{ id: "cycle-thinking", label: "Cycle thinking level", scope: "global", binding: "shift+tab" },
@@ -204,6 +213,7 @@ export const IS_MAC =
 
 const MOD_GLYPH = IS_MAC ? "⌘" : "Ctrl+";
 const ALT_GLYPH = IS_MAC ? "⌥" : "Alt+";
+const CTRL_GLYPH = IS_MAC ? "⌃" : "Ctrl+";
 const SHIFT_GLYPH = IS_MAC ? "⇧" : "Shift+";
 
 const KEY_GLYPH: Record<string, string> = {
@@ -224,6 +234,7 @@ export function formatBinding(binding: string): string {
 	const glyphs: string[] = [];
 	for (const part of parts) {
 		if (part === "mod") glyphs.push(MOD_GLYPH);
+		else if (part === "ctrl") glyphs.push(CTRL_GLYPH); // the physical Control key (quick ask)
 		else if (part === "alt") glyphs.push(ALT_GLYPH);
 		else if (part === "shift") glyphs.push(SHIFT_GLYPH);
 	}
