@@ -80,7 +80,7 @@ import {
 } from "@/src/core";
 import { ReadingThinkingField } from "@/components/reading-thinking";
 import { currentUserThinkingOpen, setAllUserThinkingOpen } from "@/components/thinking-block";
-import { slotsConfigured, type ModelsSettings } from "@/src/core";
+import { chartSources, slotsConfigured, type ModelsSettings } from "@/src/core";
 import { useSettingsSaved } from "@/components/settings-signal";
 
 /** One width for everything: transcript, cards, and the bottom blob share this column. */
@@ -448,6 +448,23 @@ export function Chat({
 	// listener is mount-scoped; the value it needs is render-scoped).
 	const pendingRef = useRef(pending);
 	pendingRef.current = pending;
+	/* The pending question's chart (owner, 2026-11-04): the latest ```chart
+	 * in the teacher prose that came BEFORE the question call in its message
+	 * — pinned in the answer dialog, so the graph sits beside the answer. */
+	const pendingChart = useMemo(() => {
+		if (!pending) return undefined;
+		for (const m of messages) {
+			const at = m.parts.findIndex((p) => p.toolCallId === pending.toolCallId);
+			if (at < 0) continue;
+			const prose = m.parts
+				.slice(0, at)
+				.filter((p) => p.type === "text" && typeof p.text === "string")
+				.map((p) => p.text as string)
+				.join("\n\n");
+			return chartSources(prose).at(-1);
+		}
+		return undefined;
+	}, [messages, pending?.toolCallId]);
 
 	// THE ACTIVE PRACTICE PROBLEM (practice sessions, 2026-10-04): the
 	// same dock-ownership rule as a pending question — an active problem
@@ -1676,6 +1693,7 @@ export function Chat({
 					}
 					onSaveQuestionDraft={(form) => { if (pending) saveQuestionDraft(pending.toolCallId, { form }); }}
 					onQuestionDraftChange={(form) => { if (pending) saveAnswerDraft(chatId, pending.toolCallId, { form }); }}
+					pendingChart={pendingChart}
 					practice={activeProblem}
 					compactionRunning={compacting}
 					onSubmitThinking={submitThinking}
@@ -1923,6 +1941,7 @@ function DockOverlay({
 	initialQuestionDraft,
 	onSaveQuestionDraft,
 	onQuestionDraftChange,
+	pendingChart,
 	practice,
 	compactionRunning,
 	onSubmitThinking,
@@ -1949,6 +1968,8 @@ function DockOverlay({
 	onSaveQuestionDraft: (draft: QuestionFormDraft) => void;
 	/** Every form edit — mirrored to localStorage per chat (reload-safe). */
 	onQuestionDraftChange: (draft: QuestionFormDraft) => void;
+	/** The latest ```chart of the turn that posed the pending question. */
+	pendingChart?: string;
 	/** Compaction running for this chat (round 14) — the docks' submit
 	 *  affordance gate (the server's registry is the real one). */
 	compactionRunning: boolean;
@@ -2421,6 +2442,7 @@ function DockOverlay({
 									initialDraft={initialQuestionDraft}
 									onSaveDraft={onSaveQuestionDraft}
 									onDraftChange={onQuestionDraftChange}
+									chart={pendingChart}
 									onEscape={dictationCancel}
 									dictationClaim={!revealPending}
 									compactionRunning={compactionRunning}

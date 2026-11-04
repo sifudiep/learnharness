@@ -64,20 +64,31 @@ function formatPrice(n: number): string {
 	return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/0$/, "");
 }
 
-export function StockChart({ source, incomplete, corner }: { source: string; incomplete: boolean; corner?: ReactNode }) {
+export function StockChart({
+	source,
+	incomplete,
+	corner,
+	height = HEIGHT,
+}: {
+	source: string;
+	incomplete: boolean;
+	corner?: ReactNode;
+	/** Plot height in px (the answer dialog pins a compact copy). */
+	height?: number;
+}) {
 	const parsed = useMemo(() => parseChartSpec(source), [source]);
 	if (!parsed.ok) {
 		// Still streaming: the JSON is partial by nature — a quiet skeleton,
 		// never a doomed error.
-		if (incomplete) return <ChartSkeleton />;
+		if (incomplete) return <ChartSkeleton height={height} />;
 		return <ChartError error={parsed.error} source={source} />;
 	}
-	return <ChartCanvas spec={parsed.spec} corner={corner} />;
+	return <ChartCanvas spec={parsed.spec} corner={corner} height={height} />;
 }
 
-function ChartSkeleton() {
+function ChartSkeleton({ height }: { height: number }) {
 	return (
-		<div data-testid="md-chart" data-lh-chart="" className="my-4 flex items-center justify-center p-4" style={{ height: HEIGHT }} aria-busy="true">
+		<div data-testid="md-chart" data-lh-chart="" className="my-4 flex items-center justify-center p-4" style={{ height }} aria-busy="true">
 			<span className="inline-block size-4 animate-spin rounded-full border border-current border-b-2 text-muted-foreground" />
 		</div>
 	);
@@ -95,7 +106,7 @@ function ChartError({ error, source }: { error: string; source: string }) {
 	);
 }
 
-function ChartCanvas({ spec, corner }: { spec: ChartSpec; corner?: ReactNode }) {
+function ChartCanvas({ spec, corner, height }: { spec: ChartSpec; corner?: ReactNode; height: number }) {
 	const holder = useRef<HTMLDivElement>(null);
 	const last = spec.bars[spec.bars.length - 1]!;
 	const [hovered, setHovered] = useState<ChartBar>(last);
@@ -237,7 +248,7 @@ function ChartCanvas({ spec, corner }: { spec: ChartSpec; corner?: ReactNode }) 
 			<div
 				ref={holder}
 				className="w-full"
-				style={{ height: HEIGHT, maxWidth: (spec.bars.length + RIGHT_ROOM) * MAX_BAR_SPACING + PRICE_SCALE_ROOM }}
+				style={{ height, maxWidth: (spec.bars.length + RIGHT_ROOM) * MAX_BAR_SPACING + PRICE_SCALE_ROOM }}
 			/>
 			{corner && <div className="absolute top-0 right-0">{corner}</div>}
 		</div>

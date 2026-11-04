@@ -172,3 +172,12 @@ export function parseChartSpec(source: string): ChartParse {
 		throw e;
 	}
 }
+
+/** The bodies of every ```chart fence in a markdown passage, in order —
+ *  the answer dialog pins the latest one from the turn that posed the
+ *  question (owner, 2026-11-04: no scrolling up to see the graph). */
+export function chartSources(markdown: string): string[] {
+	const out: string[] = [];
+	for (const m of markdown.matchAll(/^[ \t]{0,3}(`{3,}|~{3,})chart[^\S\n]*\n([\s\S]*?)\n[ \t]{0,3}\1[ \t]*$/gm)) out.push(m[2]!);
+	return out;
+}

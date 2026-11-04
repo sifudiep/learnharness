@@ -13,6 +13,7 @@ import {
 } from "@/components/dictation";
 import { useEnterSubmits } from "@/components/enter-submits";
 import { ToolContentResponse } from "@/components/ai-elements/message";
+import { StockChart } from "@/components/stock-chart";
 import { cn } from "@/lib/utils";
 import {
 	buildAnswer,
@@ -87,6 +88,10 @@ export interface QuestionDockProps {
 	 *  mirrors it to localStorage so a restart never loses the answer
 	 *  (owner, 2026-11-01). Not fired for the untouched first mount. */
 	onDraftChange?: (draft: QuestionFormDraft) => void;
+	/** The latest ```chart from the teacher message that posed this
+	 *  question — pinned in the dialog so the learner never scrolls up to
+	 *  read the graph (owner, 2026-11-04). */
+	chart?: string;
 	/** Escape in a question field stops dictation (STT wave) — threaded
 	 *  from the page that owns the dictation hook. */
 	onEscape?: () => void;
@@ -119,6 +124,7 @@ export function QuestionDock({
 	initialDraft,
 	onSaveDraft,
 	onDraftChange,
+	chart,
 	onEscape,
 	phase = "probe",
 	dictationClaim = true,
@@ -177,6 +183,7 @@ export function QuestionDock({
 					initialDraft={initialDraft}
 					onSaveDraft={onSaveDraft}
 					onDraftChange={onDraftChange}
+					chart={chart}
 					onEscape={onEscape}
 					dictationClaim={dictationClaim}
 					compactionRunning={compactionRunning}
@@ -275,6 +282,7 @@ function QuestionDockForm({
 	initialDraft,
 	onSaveDraft,
 	onDraftChange,
+	chart,
 	onEscape,
 	dictationClaim = true,
 	compactionRunning = false,
@@ -624,6 +632,7 @@ function QuestionDockForm({
 											: "Question"}
 					{qd.mode === "multi-select" && " · select all that apply"}
 				</div>
+				{chart && <PinnedChart source={chart} />}
 				<div className="mb-3 font-medium">
 					<ToolContentResponse>{qd.question}</ToolContentResponse>
 				</div>
@@ -973,6 +982,26 @@ function QuestionDockForm({
 					</div>
 				</div>
 			</form>
+		</div>
+	);
+}
+
+/** The question's chart, pinned in the dialog (owner, 2026-11-04): a
+ *  compact copy of the latest chart the teacher drew in the turn that
+ *  asked — shown by default, foldable so short screens keep room to answer. */
+function PinnedChart({ source }: { source: string }) {
+	const [open, setOpen] = useState(true);
+	return (
+		<div data-testid="dock-chart" className="mb-2">
+			<button
+				type="button"
+				onClick={() => setOpen((o) => !o)}
+				aria-expanded={open}
+				className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+			>
+				{open ? "Hide chart" : "Show chart"}
+			</button>
+			{open && <StockChart source={source} incomplete={false} height={220} />}
 		</div>
 	);
 }

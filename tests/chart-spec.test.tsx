@@ -89,3 +89,28 @@ describe("the fence renders as a chart, read aloud as one word", () => {
 		assert.equal(passageSpeech(document.querySelector(".p")!).text.replace(/\s+/g, " ").trim(), "Here it is: (chart) Next.");
 	});
 });
+
+describe("the answer dialog pins the turn's chart (owner, 2026-11-04)", () => {
+	it("chartSources finds every ```chart body in order, ignoring other fences", async () => {
+		const { chartSources } = await import("../src/core/index.ts");
+		const md = "Intro\n\n```chart\n{\"a\":1}\n```\n\n```js\nx\n```\n\n```chart\n{\"b\":2}\n```\n";
+		assert.deepEqual(chartSources(md), ['{"a":1}', '{"b":2}']);
+		assert.deepEqual(chartSources("no charts"), []);
+	});
+
+	it("a question with a chart shows it above the question", async () => {
+		const { QuestionDock } = await import("../components/question-dock.tsx");
+		const html = renderToStaticMarkup(
+			<QuestionDock toolName="ask_user_question" toolCallId="c1" expanded dictationClaim={false} onExpand={() => {}} onSubmit={() => {}}
+				input={{ question: "Which day is the entry?", options: [{ label: "Mon" }, { label: "Fri" }] }}
+				chart={JSON.stringify({ bars: [BAR] })} />,
+		);
+		assert.match(html, /data-testid="dock-chart"/);
+		assert.ok(html.indexOf('data-testid="dock-chart"') < html.indexOf("Which day is the entry?"), "the chart sits above the question");
+		const plain = renderToStaticMarkup(
+			<QuestionDock toolName="ask_user_question" toolCallId="c2" expanded dictationClaim={false} onExpand={() => {}} onSubmit={() => {}}
+				input={{ question: "Q?", options: [{ label: "a" }, { label: "b" }] }} />,
+		);
+		assert.doesNotMatch(plain, /dock-chart/);
+	});
+});
