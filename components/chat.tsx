@@ -31,6 +31,7 @@ import { DictationBar, finishDictation, joinDictation, useDictation } from "@/co
 import { clearAnswerDraft, loadAnswerDraft, saveAnswerDraft } from "@/components/answer-draft-store";
 import { CalculatorPanel, useCalculator } from "@/components/calculator";
 import { entryKey, QuickAskIcon, QuickAskPanel, useQuickAsk } from "@/components/quick-ask";
+import { DrawingsProvider } from "@/components/chart-drawing";
 import { AnswerPlayButton, ANSWER_ATTR, HighlightHoverBadge, PART_ATTR, SCOPE_ATTR, SpeedPill, useReadAloud, useVoice, VoiceButton, VoicePauseButton, VoiceStopButton } from "@/components/voice";
 import { useFieldCycle } from "@/components/field-cycle";
 import { JobsContext } from "@/components/jobs-context";
@@ -60,7 +61,7 @@ import { PracticeDock } from "@/components/practice-dock";
 import { ThinkingCard, type PracticeThinkingData } from "@/components/practice-cards";
 import { GraphContextCard, type GraphContextData } from "@/components/graph-context-card";
 import { TopBar } from "@/components/top-bar";
-import type { ArtifactPartProps, JobRecord, Phase3, QuestionAnswerData, QuestionDraft, QuestionFormDraft, TurnUsage, SessionPricing } from "@/src/core";
+import type { ArtifactPartProps, ChartDrawingsMap, JobRecord, Phase3, QuestionAnswerData, QuestionDraft, QuestionFormDraft, TurnUsage, SessionPricing } from "@/src/core";
 import type { LhViewMessage } from "@/src/core";
 import { PhaseChip, PhaseDivider } from "@/components/phase-divider";
 import {
@@ -205,6 +206,7 @@ export function Chat({
 	initialPrompt,
 	initiallyInFlight,
 	initiallyCompacting = false,
+	initialChartDrawings,
 	initialConfigured = false,
 	kind = "teach",
 }: {
@@ -226,6 +228,8 @@ export function Chat({
 	 * compaction-changed event already fired). The transcript spinner
 	 * and send gates key on it. */
 	initiallyCompacting?: boolean;
+	/** The learner's saved chart drawings (record.chartDrawings). */
+	initialChartDrawings?: ChartDrawingsMap;
 	/** slotsConfigured(server record) — the persistent setup CTA keys on
 	 *  it (BYOK, owner 2026-09-22). The server gate stays the truth; this
 	 *  only decides whether the pill rides the composer. */
@@ -1250,6 +1254,7 @@ export function Chat({
 	};
 
 	return (
+		<DrawingsProvider chatId={chatId} initial={initialChartDrawings}>
 		<ChatActionsContext.Provider
 			value={{
 				chatId,
@@ -1486,6 +1491,15 @@ export function Chat({
 										switch (part.type) {
 											case "data-graph-context":
 												return <GraphContextCard key={pi} data={part.data as GraphContextData} />;
+											case "data-chart-drawings": {
+												// The learner's chart drawings went along with this turn.
+												const n = (part.data as { count?: number } | undefined)?.count ?? 0;
+												return (
+													<div key={pi} data-testid="chart-drawings-chip" className="-mt-2 mb-1 font-ui text-xs text-muted-foreground">
+														📐 {n ? `Shared ${n} chart drawing${n === 1 ? "" : "s"} with the teacher` : "Shared chart drawing changes with the teacher"}
+													</div>
+												);
+											}
 											case "data-compaction":
 												return <CompactionMomentDivider key={pi} data={part.data as CompactionDividerData} />;
 											case "data-compaction-cut":
@@ -1873,6 +1887,7 @@ export function Chat({
 			}}
 		/>
 		</ChatActionsContext.Provider>
+		</DrawingsProvider>
 	);
 }
 

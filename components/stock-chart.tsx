@@ -18,10 +18,11 @@
  * - Colors follow the app theme tokens and re-apply on a theme flip.
  */
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { MaximizeIcon, RotateCcwIcon, XIcon, ZoomInIcon, ZoomOutIcon } from "lucide-react";
-import { parseChartSpec, type ChartBar, type ChartLineStyle, type ChartSpec, type ChartTone } from "@/src/core";
+import { MaximizeIcon, MinusIcon, MousePointer2Icon, RectangleHorizontalIcon, RotateCcwIcon, SlashIcon, Undo2Icon, XIcon, ZoomInIcon, ZoomOutIcon } from "lucide-react";
+import { DrawingEditBar, DrawingLayer, useChartDrawings, type Tool } from "@/components/chart-drawing";
+import { chartKey, parseChartSpec, type Drawing, type ChartBar, type ChartLineStyle, type ChartSpec, type ChartTone } from "@/src/core";
 
 const DAY = 86_400;
 const HEIGHT = 320;
@@ -86,7 +87,7 @@ export function StockChart({
 		if (incomplete) return <ChartSkeleton height={height} />;
 		return <ChartError error={parsed.error} source={source} />;
 	}
-	return <ChartCanvas spec={parsed.spec} corner={corner} height={height} />;
+	return <ChartCanvas spec={parsed.spec} chartId={chartKey(source)} corner={corner} height={height} />;
 }
 
 function ChartSkeleton({ height }: { height: number }) {
@@ -111,6 +112,7 @@ function ChartError({ error, source }: { error: string; source: string }) {
 
 type Mode = "inline" | "full";
 type ChartApi = import("lightweight-charts").IChartApi;
+type SeriesApi = import("lightweight-charts").ISeriesApi<"Candlestick">;
 
 /** Zoom the time axis by `factor` (<1 in, >1 out) around a logical anchor. */
 function zoomBy(chart: ChartApi, factor: number, anchor?: number): void {
@@ -149,8 +151,9 @@ function useChart(
 	spec: ChartSpec,
 	mode: Mode,
 	onHover: (bar: ChartBar) => void,
-): React.RefObject<ChartApi | null> {
+): { api: React.RefObject<ChartApi | null>; series: React.RefObject<SeriesApi | null> } {
 	const api = useRef<ChartApi | null>(null);
+	const seriesRef = useRef<SeriesApi | null>(null);
 	const hoverRef = useRef(onHover);
 	hoverRef.current = onHover;
 	useEffect(() => {
@@ -200,6 +203,7 @@ function useChart(
 				priceLineVisible: false,
 				lastValueVisible: false,
 			});
+			seriesRef.current = candles;
 			candles.setData(
 				spec.bars.map((b, i) => ({ time: timeOf(i) as never, open: b.o, high: b.h, low: b.l, close: b.c })),
 			);
@@ -277,6 +281,7 @@ function useChart(
 				el.removeEventListener("wheel", onWheel);
 				observer.disconnect();
 				api.current = null;
+				seriesRef.current = null;
 				chart.remove();
 			};
 		});
@@ -285,7 +290,7 @@ function useChart(
 			cleanup();
 		};
 	}, [holder, spec, mode]);
-	return api;
+	return { api, series: seriesRef };
 }
 
 function Legend({ spec, bar }: { spec: ChartSpec; bar: ChartBar }) {
@@ -306,24 +311,26 @@ function Legend({ spec, bar }: { spec: ChartSpec; bar: ChartBar }) {
 const ICON_BUTTON =
 	"flex size-6 items-center justify-center rounded-md text-muted-foreground/80 transition-colors hover:bg-accent hover:text-foreground";
 
-function ChartCanvas({ spec, corner, height }: { spec: ChartSpec; corner?: ReactNode; height: number }) {
+function ChartCanvas({ spec, chartId, corner, height }: { spec: ChartSpec; chartId: string; corner?: ReactNode; height: number }) {
 	const holder = useRef<HTMLDivElement>(null);
 	const [hovered, setHovered] = useState<ChartBar>(spec.bars[spec.bars.length - 1]!);
 	const [expanded, setExpanded] = useState(false);
 	useEffect(() => setHovered(spec.bars[spec.bars.length - 1]!), [spec]);
-	useChart(holder, spec, "inline", setHovered);
+	const { api, series } = useChart(holder, spec, "inline", setHovered);
+	// The learner's drawings on this chart — read-only here, edited full screen.
+	const drawings = useChartDrawings(chartId, spec.title, spec.bars.map((b) => b.t));
 
 	return (
-		<div data-testid="md-chart" data-lh-chart="" className="group/md relative my-4">
+		// isolate: the chart's z-indexed canvases + drawing layer stay inside
+		// its own stacking context — never painting over the answer dialog.
+		<div data-testid="md-chart" data-lh-chart="" className="group/md relative isolate my-4">
 			<div className="mb-1 pr-16">
 				<Legend spec={spec} bar={hovered} />
 			</div>
-			<div
-				ref={holder}
-				className="w-full"
-				title="⌘/Ctrl + scroll to zoom · drag to pan"
-				style={{ height, maxWidth: (spec.bars.length + RIGHT_ROOM) * MAX_BAR_SPACING + PRICE_SCALE_ROOM }}
-			/>
+			<div className="relative w-full" style={{ height, maxWidth: (spec.bars.length + RIGHT_ROOM) * MAX_BAR_SPACING + PRICE_SCALE_ROOM }}>
+				<div ref={holder} className="h-full w-full" title="⌘/Ctrl + scroll to zoom · drag to pan" />
+				{drawings && drawings.drawings.length > 0 && <DrawingLayer chart={api} series={series} drawings={drawings.drawings} />}
+			</div>
 			<div className="absolute top-0 right-0 flex items-start gap-0.5">
 				{corner}
 				<button
@@ -337,7 +344,7 @@ function ChartCanvas({ spec, corner, height }: { spec: ChartSpec; corner?: React
 					<MaximizeIcon className="size-3.5" />
 				</button>
 			</div>
-			{expanded && <ChartFullscreen spec={spec} onClose={() => setExpanded(false)} />}
+			{expanded && <ChartFullscreen spec={spec} chartId={chartId} onClose={() => setExpanded(false)} />}
 		</div>
 	);
 }
@@ -346,17 +353,63 @@ function ChartCanvas({ spec, corner, height }: { spec: ChartSpec; corner?: React
  *  navigation. Keys while open: + / − zoom, 0 resets, ← / → pan, Esc
  *  closes — claimed in the capture phase so the app's shortcuts (the
  *  reading cursor's arrows, the Esc chain) stay out. */
-function ChartFullscreen({ spec, onClose }: { spec: ChartSpec; onClose: () => void }) {
+function ChartFullscreen({ spec, chartId, onClose }: { spec: ChartSpec; chartId: string; onClose: () => void }) {
 	const holder = useRef<HTMLDivElement>(null);
 	const [hovered, setHovered] = useState<ChartBar>(spec.bars[spec.bars.length - 1]!);
-	const api = useChart(holder, spec, "full", setHovered);
+	const { api, series } = useChart(holder, spec, "full", setHovered);
+
+	/* THE DRAWING EDITOR (owner, 2026-11-04): TradingView-style tools; the
+	 * drawings save with the chat and reach the teacher on the next turn. */
+	const store = useChartDrawings(chartId, spec.title, spec.bars.map((b) => b.t));
+	const drawings = store?.drawings ?? [];
+	const [tool, setTool] = useState<Tool>("select");
+	const [selected, setSelected] = useState<string | null>(null);
+	const history = useRef<{ stack: Drawing[][]; at: number }>({ stack: [], at: 0 });
+	const change = useCallback(
+		(next: Drawing[]) => {
+			if (!store) return;
+			// One undo step per gesture: a drag's many moves collapse into one.
+			const h = history.current;
+			if (Date.now() - h.at > 400) h.stack = [...h.stack.slice(-49), store.drawings];
+			h.at = Date.now();
+			store.set(next);
+		},
+		[store],
+	);
+	const undo = useCallback(() => {
+		const prev = history.current.stack.pop();
+		if (prev && store) {
+			history.current.at = 0;
+			store.set(prev);
+			setSelected(null);
+		}
+	}, [store]);
+	const remove = useCallback(() => {
+		if (!selected) return;
+		change(drawings.filter((d) => d.id !== selected));
+		setSelected(null);
+	}, [selected, drawings, change]);
+	const picked = drawings.find((d) => d.id === selected) ?? null;
 
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
+			const typing = e.target instanceof HTMLElement && e.target.closest("input, textarea, select, [contenteditable]");
+			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && !typing) {
+				e.preventDefault();
+				e.stopPropagation();
+				undo();
+				return;
+			}
 			if (e.metaKey || e.ctrlKey || e.altKey) return;
+			if (typing && e.key !== "Escape") return; // the edit bar's fields keep their keys
 			const chart = api.current;
 			let used = true;
-			if (e.key === "Escape") onClose();
+			// Esc peels one layer: the tool → the selection → full screen.
+			if (e.key === "Escape") {
+				if (tool !== "select") setTool("select");
+				else if (selected) setSelected(null);
+				else onClose();
+			} else if ((e.key === "Delete" || e.key === "Backspace") && selected) remove();
 			else if (!chart) used = false;
 			else if (e.key === "+" || e.key === "=") zoomBy(chart, 0.8);
 			else if (e.key === "-" || e.key === "_") zoomBy(chart, 1.25);
@@ -371,7 +424,7 @@ function ChartFullscreen({ spec, onClose }: { spec: ChartSpec; onClose: () => vo
 		};
 		window.addEventListener("keydown", onKey, true);
 		return () => window.removeEventListener("keydown", onKey, true);
-	}, [api, onClose]);
+	}, [api, onClose, tool, selected, remove, undo]);
 
 	return createPortal(
 		<div
@@ -400,11 +453,63 @@ function ChartFullscreen({ spec, onClose }: { spec: ChartSpec; onClose: () => vo
 					</button>
 				</div>
 			</div>
-			<div ref={holder} className="min-h-0 w-full flex-1" />
+			<div className="flex min-h-0 flex-1 gap-2">
+				{store && <DrawingToolbar tool={tool} onTool={setTool} onUndo={undo} canUndo={history.current.stack.length > 0} />}
+				<div className="relative min-h-0 flex-1">
+					<div ref={holder} className="h-full w-full" />
+					<DrawingLayer
+						chart={api}
+						series={series}
+						drawings={drawings}
+						editable={!!store}
+						tool={tool}
+						onToolDone={() => setTool("select")}
+						onChange={change}
+						selected={selected}
+						onSelect={setSelected}
+					/>
+					{picked && (
+						<div className="absolute top-2 left-1/2 z-10 -translate-x-1/2">
+							<DrawingEditBar drawing={picked} onChange={(d) => change(drawings.map((x) => (x.id === d.id ? d : x)))} onDelete={remove} />
+						</div>
+					)}
+				</div>
+			</div>
 			<div className="mt-1 text-center text-[11px] text-muted-foreground/70">
-				Scroll to zoom · drag to pan · drag an axis to stretch it · double-click an axis to reset · + − 0 ← → · Esc closes
+				Scroll to zoom · drag to pan · drag an axis to stretch it · + − 0 ← → · draw from the left toolbar · ⌫ deletes · ⌘Z undoes · Esc steps back
 			</div>
 		</div>,
 		document.body,
+	);
+}
+
+/** The full-screen drawing tools (TradingView's left rail). */
+function DrawingToolbar({ tool, onTool, onUndo, canUndo }: { tool: Tool; onTool: (t: Tool) => void; onUndo: () => void; canUndo: boolean }) {
+	const item = (t: Tool, label: string, icon: ReactNode) => (
+		<button
+			key={t}
+			type="button"
+			data-testid={`draw-tool-${t}`}
+			aria-pressed={tool === t}
+			aria-label={label}
+			title={label}
+			onClick={() => onTool(tool === t ? "select" : t)}
+			className={`flex size-8 items-center justify-center rounded-md transition-colors ${tool === t ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"}`}
+		>
+			{icon}
+		</button>
+	);
+	return (
+		<div data-testid="drawing-toolbar" className="flex shrink-0 flex-col gap-1 border-r border-border/60 pr-2">
+			{item("select", "Select & move (Esc)", <MousePointer2Icon className="size-4" />)}
+			{item("fib", "Fib retracement", <span className="font-mono text-[10px] font-semibold">Fib</span>)}
+			{item("rect", "Rectangle with text", <RectangleHorizontalIcon className="size-4" />)}
+			{item("trend", "Trend line", <SlashIcon className="size-4" />)}
+			{item("hline", "Horizontal line", <MinusIcon className="size-4" />)}
+			<div className="my-1 border-t border-border/60" />
+			<button type="button" onClick={onUndo} disabled={!canUndo} aria-label="Undo (⌘Z)" title="Undo (⌘Z)" className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-30">
+				<Undo2Icon className="size-4" />
+			</button>
+		</div>
 	);
 }
