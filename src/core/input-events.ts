@@ -35,10 +35,12 @@ import {
 	newNextMessage,
 	newProblemDismissedMarker,
 	newThinkingMessage,
+	newMessageId,
 	newUserMessage,
 	pendingProblemDismissalOf,
 } from "./native-messages.ts";
 import { QUESTION_TOOLS, toolQuestionKind } from "./pending.ts";
+import { chartDrawingsMarker, type ChartDrawingsMap } from "./chart-drawings.ts";
 
 /** One client-originated input event (the POST body's `input`). */
 export type ChatInput =
@@ -195,18 +197,23 @@ export function parseChatInput(input: unknown): ChatInput {
  * double-answering.
  */
 export function inputAppends(
-	record: { messages: LhMessage[]; kind?: string },
+	record: { messages: LhMessage[]; kind?: string; chartDrawings?: ChartDrawingsMap },
 	input: ChatInput,
 ): LhMessage[] {
 	switch (input.type) {
 		case "text":
-			return [...dismissalConclusion(record), newUserMessage(input.text)];
+			return [...dismissalConclusion(record), newUserMessage(input.text), ...drawings(record)];
 		case "answer": {
 			const pending = danglingQuestionOf(record.messages);
 			if (!pending || pending.toolCallId !== input.toolCallId) {
 				throw new ChatInputError("answer input targets no pending question call");
 			}
-			return [newAnswerResult(input.toolCallId, pending.tool, input.answer)];
+			const result = newAnswerResult(input.toolCallId, pending.tool, input.answer);
+			// The drawings ride AFTER the tool result (a user message between a
+			// call and its result breaks the provider format) — and only when no
+			// sibling question still waits, or it would land between results.
+			const settled = danglingQuestionOf([...record.messages, result]) === null;
+			return [result, ...(settled ? drawings(record) : [])];
 		}
 		case "continue":
 			return dismissalConclusion(record);
@@ -215,7 +222,7 @@ export function inputAppends(
 			if (!active || active.toolCallId !== input.problemCallId) {
 				throw new ChatInputError("thinking input targets no active problem");
 			}
-			return [...dismissalConclusion(record), newThinkingMessage(input.problemCallId, input.text)];
+			return [...dismissalConclusion(record), newThinkingMessage(input.problemCallId, input.text), ...drawings(record)];
 		}
 		case "next": {
 			// Honest 400s, the thinking gate's discipline: the signal is a
@@ -228,7 +235,7 @@ export function inputAppends(
 			if (activeProblemOf(record.messages)) {
 				throw new ChatInputError("next input requires no active problem");
 			}
-			return [...dismissalConclusion(record), newNextMessage()];
+			return [...dismissalConclusion(record), newNextMessage(), ...drawings(record)];
 		}
 	}
 }
@@ -241,6 +248,14 @@ export function inputAppends(
 function dismissalConclusion(record: { messages: LhMessage[] }): LhMessage[] {
 	const problemCallId = pendingProblemDismissalOf(record.messages);
 	return problemCallId ? concludedByDismissalPair(problemCallId) : [];
+}
+
+/** The learner's chart drawings changed since the teacher last saw them
+ *  (owner, 2026-11-04) — a marker carried by this learner input. Pure;
+ *  empty when nothing changed. Never on `continue` (automatic re-syncs). */
+function drawings(record: { messages: LhMessage[]; chartDrawings?: ChartDrawingsMap }): LhMessage[] {
+	const marker = chartDrawingsMarker(record, newMessageId());
+	return marker ? [marker] : [];
 }
 
 /** Is this tool name a question tool (dock-owned, answer-gated)? */

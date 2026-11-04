@@ -85,6 +85,8 @@ export * from "./calc.ts";
 export * from "./quick-ask.ts";
 // text-marks.ts: inline color marks (==…==) — the shared grammar (pure).
 export * from "./text-marks.ts";
+// chart-drawings.ts: learner chart annotations — shapes, fib math, the teacher summary (pure).
+export * from "./chart-drawings.ts";
 // math-speech.ts: equations → spoken words for read-aloud (speech-rule-engine, lazy-loaded).
 export * from "./math-speech.ts";
 export * from "./coverage.ts";

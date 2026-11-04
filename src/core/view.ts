@@ -453,6 +453,16 @@ function projectMarker(marker: LhMarkerMessage, out: LhViewMessage[]): void {
 			// UI-only (the ask-style dismissal): the synthesized conclude
 			// pair — which rides the NEXT input — carries the record's face.
 			return;
+		case "chart-drawings":
+			// The learner's drawings reached the teacher (owner, 2026-11-04):
+			// a small chip under their input — the summary itself is
+			// model-facing text, never shown as learner words.
+			out.push({
+				id: marker.id,
+				role: "user",
+				parts: [{ type: "data-chart-drawings", id: `cd_${marker.id}`, data: marker.details }],
+			});
+			return;
 		case "compaction": {
 			// THE MOMENT DIVIDER (owner round 14): minimal centered small
 			// text at the compaction moment — where the user currently is

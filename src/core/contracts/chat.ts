@@ -10,6 +10,7 @@ import type { LhMessage } from "../native-messages.ts";
 import type { Phase3 } from "../phases.ts";
 import type { PlanNodeStatus, PlanTree } from "./plan.ts";
 import type { EmissionStats } from "./graph.ts";
+import type { ChartDrawingsMap } from "../chart-drawings.ts";
 
 // ─── Chat records (the session store's on-disk format) ───────────────────────
 
@@ -37,6 +38,10 @@ export interface ChatRecord {
 	kind?: ChatKind;
 	/** The session's plan tree (vision §2) — written by plan tools via saveTree. */
 	tree?: PlanTree;
+	/** The learner's chart drawings (owner, 2026-11-04), keyed by chart
+	 *  (chartKey of the fence data) — written by PUT /drawings, attached to
+	 *  the teacher's context on the next turn (chart-drawings marker). */
+	chartDrawings?: ChartDrawingsMap;
 	/** Append-only usage log (observability, 2026-09): one entry per model
 	 * turn. DELIBERATELY a parallel log, not per-message metadata — the client
 	 * re-POSTs its message list every turn and its copies never carry
