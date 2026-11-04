@@ -81,6 +81,8 @@ export * from "./voice.ts";
 export * from "./chart-spec.ts";
 // calc.ts: the chat calculator's arithmetic — a parser, never eval (pure).
 export * from "./calc.ts";
+// quick-ask.ts: the side-question channel — request shape + compact session context (pure).
+export * from "./quick-ask.ts";
 // math-speech.ts: equations → spoken words for read-aloud (speech-rule-engine, lazy-loaded).
 export * from "./math-speech.ts";
 export * from "./coverage.ts";

@@ -47,3 +47,5 @@ export { subscriptionControlsResponse, subscriptionBrowserResponse } from "./web
 export { sessionCost } from "./pricing.ts";
 // The dev-only Claude Code CLI connection's status (GET /api/claude-code).
 export { refreshClaudeCodeStatus } from "../agent/claude-code-cli.ts";
+// The quick-ask side channel (POST /api/chats/[id]/ask) — streams, writes nothing.
+export { handleQuickAsk } from "./quick-ask.ts";
