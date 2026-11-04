@@ -410,7 +410,12 @@ function ChartFullscreen({ spec, chartId, onClose }: { spec: ChartSpec; chartId:
 				else if (selected) setSelected(null);
 				else onClose();
 			} else if ((e.key === "Delete" || e.key === "Backspace") && selected) remove();
-			else if (!chart) used = false;
+			// Tool keys (owner, 2026-11-04) — full screen only: F fib, R
+			// rectangle, L trend line, H horizontal; again = back to select.
+			else if (store && !e.shiftKey && TOOL_KEYS[e.code]) {
+				const t = TOOL_KEYS[e.code]!;
+				setTool((cur) => (cur === t ? "select" : t));
+			} else if (!chart) used = false;
 			else if (e.key === "+" || e.key === "=") zoomBy(chart, 0.8);
 			else if (e.key === "-" || e.key === "_") zoomBy(chart, 1.25);
 			else if (e.key === "0") resetView(chart);
@@ -424,7 +429,43 @@ function ChartFullscreen({ spec, chartId, onClose }: { spec: ChartSpec; chartId:
 		};
 		window.addEventListener("keydown", onKey, true);
 		return () => window.removeEventListener("keydown", onKey, true);
-	}, [api, onClose, tool, selected, remove, undo]);
+	}, [api, onClose, tool, selected, remove, undo, store]);
+
+	/* MIDDLE-BUTTON PAN (owner, 2026-11-04 — "Mouse3"): drag with the wheel
+	 * button pans time AND price, TradingView-style — also while a drawing
+	 * tool is armed (capture phase, ahead of the drawing layer). */
+	const onMiddleDown = (e: React.PointerEvent) => {
+		if (e.button !== 1) return;
+		const chart = api.current;
+		const candles = series.current;
+		if (!chart || !candles) return;
+		e.preventDefault(); // no browser autoscroll
+		e.stopPropagation();
+		const ts = chart.timeScale();
+		const range = ts.getVisibleLogicalRange();
+		const price = candles.priceScale().getVisibleRange();
+		if (!range || !price) return;
+		const pane = chart.paneSize(0);
+		const perPxBar = (range.to - range.from) / Math.max(1, pane.width);
+		const perPxPrice = (price.to - price.from) / Math.max(1, pane.height);
+		const x0 = e.clientX;
+		const y0 = e.clientY;
+		candles.priceScale().applyOptions({ autoScale: false });
+		const onMove = (ev: PointerEvent) => {
+			const dBar = -(ev.clientX - x0) * perPxBar;
+			const dPrice = (ev.clientY - y0) * perPxPrice;
+			ts.setVisibleLogicalRange({ from: range.from + dBar, to: range.to + dBar });
+			candles.priceScale().setVisibleRange({ from: price.from + dPrice, to: price.to + dPrice });
+		};
+		const onUp = () => {
+			window.removeEventListener("pointermove", onMove);
+			window.removeEventListener("pointerup", onUp);
+			document.body.style.cursor = "";
+		};
+		document.body.style.cursor = "grabbing";
+		window.addEventListener("pointermove", onMove);
+		window.addEventListener("pointerup", onUp);
+	};
 
 	return createPortal(
 		<div
@@ -455,7 +496,11 @@ function ChartFullscreen({ spec, chartId, onClose }: { spec: ChartSpec; chartId:
 			</div>
 			<div className="flex min-h-0 flex-1 gap-2">
 				{store && <DrawingToolbar tool={tool} onTool={setTool} onUndo={undo} canUndo={history.current.stack.length > 0} />}
-				<div className="relative min-h-0 flex-1">
+				<div
+					className="relative min-h-0 flex-1"
+					onPointerDownCapture={onMiddleDown}
+					onMouseDown={(e) => e.button === 1 && e.preventDefault()}
+				>
 					<div ref={holder} className="h-full w-full" />
 					<DrawingLayer
 						chart={api}
@@ -476,12 +521,15 @@ function ChartFullscreen({ spec, chartId, onClose }: { spec: ChartSpec; chartId:
 				</div>
 			</div>
 			<div className="mt-1 text-center text-[11px] text-muted-foreground/70">
-				Scroll to zoom · drag to pan · drag an axis to stretch it · + − 0 ← → · draw from the left toolbar · ⌫ deletes · ⌘Z undoes · Esc steps back
+				Scroll to zoom · drag or middle-drag to pan · drag an axis to stretch it · + − 0 ← → · F fib · R rectangle · L line · H horizontal · ⌫ deletes · ⌘Z undoes · Esc steps back
 			</div>
 		</div>,
 		document.body,
 	);
 }
+
+/** Full-screen tool keys (physical keys, so any layout/case works). */
+const TOOL_KEYS: Record<string, Tool> = { KeyF: "fib", KeyR: "rect", KeyL: "trend", KeyH: "hline" };
 
 /** The full-screen drawing tools (TradingView's left rail). */
 function DrawingToolbar({ tool, onTool, onUndo, canUndo }: { tool: Tool; onTool: (t: Tool) => void; onUndo: () => void; canUndo: boolean }) {
@@ -502,10 +550,10 @@ function DrawingToolbar({ tool, onTool, onUndo, canUndo }: { tool: Tool; onTool:
 	return (
 		<div data-testid="drawing-toolbar" className="flex shrink-0 flex-col gap-1 border-r border-border/60 pr-2">
 			{item("select", "Select & move (Esc)", <MousePointer2Icon className="size-4" />)}
-			{item("fib", "Fib retracement", <span className="font-mono text-[10px] font-semibold">Fib</span>)}
-			{item("rect", "Rectangle with text", <RectangleHorizontalIcon className="size-4" />)}
-			{item("trend", "Trend line", <SlashIcon className="size-4" />)}
-			{item("hline", "Horizontal line", <MinusIcon className="size-4" />)}
+			{item("fib", "Fib retracement (F)", <span className="font-mono text-[10px] font-semibold">Fib</span>)}
+			{item("rect", "Rectangle with text (R)", <RectangleHorizontalIcon className="size-4" />)}
+			{item("trend", "Trend line (L)", <SlashIcon className="size-4" />)}
+			{item("hline", "Horizontal line (H)", <MinusIcon className="size-4" />)}
 			<div className="my-1 border-t border-border/60" />
 			<button type="button" onClick={onUndo} disabled={!canUndo} aria-label="Undo (⌘Z)" title="Undo (⌘Z)" className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-30">
 				<Undo2Icon className="size-4" />

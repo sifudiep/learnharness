@@ -46,6 +46,7 @@ second pillar of input).
 | Toggle dictation | ⌥D | `lh:kbd-toggle-dictation` (dictation.tsx) |
 | Hold to dictate | hold Space *(any focus, text fields included)* | dictation.tsx window capture listener — the key's auto-repeat marks a hold (a tap stays a tap), the typed space is taken back, release stops the run |
 | Toggle quick ask | ⌃C on Mac (physical Control — ⌘C stays Copy) · Ctrl+Shift+C elsewhere | quick-ask.tsx window capture listener (display-only registry row); swaps with the calculator |
+| Chart drawing tools | F fib · R rectangle · L trend line · H horizontal line · middle-drag pans *(full-screen chart only)* | stock-chart.tsx full-screen capture listener; pressing the same key again returns to select |
 | Toggle calculator | ⌥C | `lh:kbd-toggle-calculator` (calculator.tsx; while focused it owns digits, operators, ↵, ⌫, C, ↑, Esc) |
 | Toggle read aloud | ⌥S | `lh:kbd-toggle-voice` (voice.tsx; chat page only) |
 | Pause/resume reading | P · Space tap *(not in a text field; Space only while reading or a cursor is parked — else it scrolls; decided on release, so a hold dictates instead)* | `lh:kbd-toggle-voice-pause` (voice.tsx; a moved/clicked reading cursor = read from it; idle = no-op) |
