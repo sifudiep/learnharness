@@ -74,7 +74,20 @@ export function useCalculator() {
 		window.addEventListener(ev, toggle);
 		return () => window.removeEventListener(ev, toggle);
 	}, [toggle]);
-	return { open: state.open, tape: state.tape, focusTick, toggle, close: () => update({ open: false }), setTape: (tape: Entry[]) => update({ tape }) };
+	// Stable, and a no-op when already closed: the chat's panel swap calls
+	// it from an effect (a fresh function / fresh state each time looped).
+	const close = useCallback(
+		() =>
+			setState((prev) => {
+				if (!prev.open) return prev;
+				const next = { ...prev, open: false };
+				save(next);
+				return next;
+			}),
+		[],
+	);
+	const setTape = useCallback((tape: Entry[]) => update({ tape }), [update]);
+	return { open: state.open, tape: state.tape, focusTick, toggle, close, setTape };
 }
 
 export type Calculator = ReturnType<typeof useCalculator>;
