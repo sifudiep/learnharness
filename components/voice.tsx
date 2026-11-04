@@ -483,9 +483,9 @@ type ScreenWord = {
 };
 
 /** Every word of every teacher passage, in page order. */
-function screenWords(): ScreenWord[] {
+function screenWords(scope: ParentNode = document): ScreenWord[] {
 	const out: ScreenWord[] = [];
-	for (const el of Array.from(document.querySelectorAll(`[${ANSWER_ATTR}] .${PASSAGE_CLASS}`))) {
+	for (const el of Array.from(scope.querySelectorAll(`[${ANSWER_ATTR}] .${PASSAGE_CLASS}`))) {
 		const part = el.getAttribute(PART_ATTR);
 		if (!part) continue;
 		const speech = passageSpeech(el);
@@ -598,7 +598,7 @@ export function onCursorKey(e: KeyboardEvent): void {
 	const from = cursor ?? (isVoiceSpeaking() && lastSpot ? { ...lastSpot, moved: false } : null);
 	if (!from) return;
 	e.preventDefault();
-	const words = screenWords();
+	const words = screenWords(scopeOf(passageEl(from.part)));
 	const at = words.findIndex((w) => w.part === from.part && w.local === from.index);
 	if (at < 0) return;
 	const horizontal = e.key === "ArrowLeft" || e.key === "ArrowRight";
@@ -846,7 +846,9 @@ export function useReadAloud({
 
 	const playFrom = useCallback(
 		(passage: Element, offset = 0) => {
-			const passages = Array.from(document.querySelectorAll(`[${ANSWER_ATTR}] .${PASSAGE_CLASS}`));
+			// Reading stays in its own pane: the chat never runs on into the
+			// quick-ask answers, nor they into the chat (owner, 2026-11-04).
+			const passages = Array.from(scopeOf(passage).querySelectorAll(`[${ANSWER_ATTR}] .${PASSAGE_CLASS}`));
 			const from = passages.indexOf(passage);
 			if (from < 0) return;
 			unlockAudio(); // under the click gesture
@@ -1024,6 +1026,13 @@ export type ReadAloud = {
  *  wrapper carries ANSWER_ATTR=<view message id>; prose blocks are the
  *  existing `.lh-source-passage` divs. */
 export const ANSWER_ATTR = "data-voice-answer";
+/** A reading pane (the chat transcript, the quick-ask thread): manual
+ *  reading and the cursor keys never cross out of the pane they start in. */
+export const SCOPE_ATTR = "data-voice-scope";
+
+function scopeOf(el: Element | null): ParentNode {
+	return el?.closest(`[${SCOPE_ATTR}]`) ?? document;
+}
 /** Each prose passage's part id (`<native id>-t<n>`) — the highlight's
  *  anchor, shared by auto-read (its text-part key) and manual reading. */
 export const PART_ATTR = "data-voice-part";
