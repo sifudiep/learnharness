@@ -30,8 +30,8 @@ import { QueuedSteersBody, type QueuedSteerLine } from "@/components/queued-stee
 import { DictationBar, finishDictation, joinDictation, useDictation } from "@/components/dictation";
 import { clearAnswerDraft, loadAnswerDraft, saveAnswerDraft } from "@/components/answer-draft-store";
 import { CalculatorPanel, useCalculator } from "@/components/calculator";
-import { QuickAskIcon, QuickAskPanel, useQuickAsk } from "@/components/quick-ask";
-import { AnswerPlayButton, ANSWER_ATTR, HighlightHoverBadge, PART_ATTR, SpeedPill, useReadAloud, useVoice, VoiceButton, VoicePauseButton, VoiceStopButton } from "@/components/voice";
+import { entryKey, QuickAskIcon, QuickAskPanel, useQuickAsk } from "@/components/quick-ask";
+import { AnswerPlayButton, ANSWER_ATTR, HighlightHoverBadge, PART_ATTR, SCOPE_ATTR, SpeedPill, useReadAloud, useVoice, VoiceButton, VoicePauseButton, VoiceStopButton } from "@/components/voice";
 import { useFieldCycle } from "@/components/field-cycle";
 import { JobsContext } from "@/components/jobs-context";
 import { StatsBar } from "@/components/stats-bar";
@@ -497,6 +497,20 @@ export function Chat({
 	useEffect(() => {
 		if (calc.open) closeQuickAsk();
 	}, [calc.open, calc.focusTick, closeQuickAsk]);
+	/* Voice-over on quick-ask answers (owner, 2026-11-04): the SAME tracker
+	 * as the chat, fed the thread as assistant messages — auto-read of a
+	 * streaming answer while voice is on, ▶/■, right-click, highlight and
+	 * the cursor. Part ids match the panel's data-voice-part markers. */
+	const quickAskMessages = useMemo(
+		() =>
+			quickAsk.thread.map((e, i) => ({
+				id: `qa-${entryKey(e, i)}`,
+				role: "assistant" as const,
+				parts: [{ type: "text", id: `qa:${entryKey(e, i)}`, text: e.answer }],
+			})),
+		[quickAsk.thread],
+	);
+	const quickAskRead = useReadAloud({ messages: quickAskMessages, busy: quickAsk.busy, pending: null, voice });
 	const readAloud = useReadAloud({ messages, busy, pending, voice });
 	const interruptVoice = readAloud.interrupt;
 
@@ -1427,6 +1441,7 @@ export function Chat({
 						    cursor (never during a selection gesture). */}
 						<div
 							data-session-find-root=""
+							{...{ [SCOPE_ATTR]: "" }}
 							onContextMenu={readAloud.onContextMenu}
 							onMouseDown={readAloud.onMouseDown}
 							onMouseUp={readAloud.onMouseUp}
@@ -1816,7 +1831,9 @@ export function Chat({
 				    session area — the conversation (and its centered dock) narrows
 				    beside it, so chat + calculator fill the area as one pair. */}
 				{calc.open && <CalculatorPanel calc={calc} />}
-				{quickAsk.open && <QuickAskPanel ask={quickAsk} />}
+				{quickAsk.open && (
+					<QuickAskPanel ask={quickAsk} readAloud={quickAskRead} onSend={() => quickAskRead.interrupt(false)} />
+				)}
 
 				{/* The session-scoped focuses (chrome-melt wave, 2026-09-19): mounted
 				    INSIDE the session area — absolute inset-0 siblings of the scroller,

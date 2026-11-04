@@ -22,11 +22,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ImagePlusIcon, MessageCircleQuestionIcon, PlusIcon, SquareIcon, Trash2Icon, XIcon, ArrowUpIcon } from "lucide-react";
 import { QUICK_ASK_MAX_IMAGES, QUICK_ASK_MAX_THREAD, type QuickAskImage } from "@/src/core";
 import { MessageResponse } from "@/components/ai-elements/message";
+import { AnswerPlayButton, ANSWER_ATTR, PART_ATTR, SCOPE_ATTR, type ReadAloud } from "@/components/voice";
 import { cn } from "@/lib/utils";
 
 export { MessageCircleQuestionIcon as QuickAskIcon };
 
-type Entry = { question: string; marked: string[]; images: number; answer: string; error?: string };
+/** `id` keys read-aloud's bookkeeping (stable across a "New thread"). */
+export type QuickAskEntry = { id?: string; question: string; marked: string[]; images: number; answer: string; error?: string };
+type Entry = QuickAskEntry;
+
+/** The answer's read-aloud keys: entries saved before ids existed fall back to their index. */
+export const entryKey = (e: QuickAskEntry, i: number) => e.id ?? `i${i}`;
 type Attached = QuickAskImage & { url: string };
 
 const MAX_MARK = 4000;
@@ -144,7 +150,7 @@ export function useQuickAsk(chatId: string) {
 			.filter((e) => e.answer && !e.error)
 			.slice(-QUICK_ASK_MAX_THREAD)
 			.map((e) => ({ question: e.question, answer: e.answer }));
-		update((t) => [...t, { question: q, marked: marks, images: images.length, answer: "" }]);
+		update((t) => [...t, { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, question: q, marked: marks, images: images.length, answer: "" }]);
 		setSaved([]);
 		setMarked(null);
 		setBusy(true);
@@ -262,7 +268,67 @@ function Chip({ text, saved, onSave, onDrop }: { text: string; saved: boolean; o
 	);
 }
 
-export function QuickAskPanel({ ask }: { ask: QuickAsk }) {
+const WIDTH_KEY = "lh:quick-ask-width";
+const DEFAULT_WIDTH = 416;
+const MIN_WIDTH = 300;
+
+function clampWidth(w: number): number {
+	const max = Math.max(MIN_WIDTH, Math.min(1000, window.innerWidth * 0.65));
+	return Math.round(Math.min(max, Math.max(MIN_WIDTH, w)));
+}
+
+export function QuickAskPanel({
+	ask,
+	readAloud,
+	onSend,
+}: {
+	ask: QuickAsk;
+	/** Voice-over on the answers — the main chat's machinery (▶/■,
+	 *  right-click a word, the green highlight, the reading cursor). */
+	readAloud?: ReadAloud;
+	/** A question went out (the page interrupts old speech). */
+	onSend?: () => void;
+}) {
+	/* RESIZABLE (owner, 2026-11-04): drag the left edge; the width is kept
+	 * on this device; double-click the edge resets it. */
+	const [width, setWidth] = useState(DEFAULT_WIDTH);
+	useEffect(() => {
+		try {
+			const w = Number(window.localStorage.getItem(WIDTH_KEY));
+			if (w) setWidth(clampWidth(w));
+		} catch {
+			/* storage unavailable: default width */
+		}
+	}, []);
+	const persistWidth = (w: number) => {
+		try {
+			window.localStorage.setItem(WIDTH_KEY, String(w));
+		} catch {
+			/* storage unavailable */
+		}
+	};
+	const startResize = (e: React.PointerEvent) => {
+		e.preventDefault();
+		const startX = e.clientX;
+		const startW = width;
+		let latest = startW;
+		const onMove = (ev: PointerEvent) => {
+			latest = clampWidth(startW + (startX - ev.clientX));
+			setWidth(latest);
+		};
+		const onUp = () => {
+			window.removeEventListener("pointermove", onMove);
+			window.removeEventListener("pointerup", onUp);
+			document.body.style.cursor = "";
+			document.body.style.userSelect = "";
+			persistWidth(latest);
+		};
+		document.body.style.cursor = "col-resize";
+		document.body.style.userSelect = "none";
+		window.addEventListener("pointermove", onMove);
+		window.addEventListener("pointerup", onUp);
+	};
+
 	const [question, setQuestion] = useState("");
 	const [images, setImages] = useState<Attached[]>([]);
 	const [dragging, setDragging] = useState(false);
@@ -288,13 +354,16 @@ export function QuickAskPanel({ ask }: { ask: QuickAsk }) {
 		setImages((cur) => [...cur, ...added].slice(0, QUICK_ASK_MAX_IMAGES));
 	};
 
-	const submit = async () => {
+	// The input clears the moment a question is sent (owner, 2026-11-04) —
+	// not after the answer finishes streaming.
+	const submit = () => {
 		if (!question.trim() || ask.busy) return;
-		const sent = await ask.send(question, images);
-		if (sent) {
-			setQuestion("");
-			setImages([]);
-		}
+		const q = question;
+		const imgs = images;
+		setQuestion("");
+		setImages([]);
+		onSend?.();
+		void ask.send(q, imgs);
 	};
 
 	return (
@@ -302,7 +371,8 @@ export function QuickAskPanel({ ask }: { ask: QuickAsk }) {
 			data-testid="quick-ask"
 			data-quick-ask=""
 			aria-label="Quick ask"
-			className={cn("relative flex h-full w-[26rem] shrink-0 flex-col border-l border-border/60", dragging && "bg-accent/30")}
+			style={{ width }}
+			className={cn("relative flex h-full shrink-0 flex-col border-l border-border/60", dragging && "bg-accent/30")}
 			onKeyDown={(e) => {
 				if (e.key === "Escape") {
 					e.stopPropagation();
@@ -323,6 +393,19 @@ export function QuickAskPanel({ ask }: { ask: QuickAsk }) {
 				void addFiles(e.dataTransfer.files);
 			}}
 		>
+			<div
+				role="separator"
+				aria-orientation="vertical"
+				aria-label="Resize quick ask"
+				title="Drag to resize · double-click to reset"
+				data-testid="quick-ask-resize"
+				onPointerDown={startResize}
+				onDoubleClick={() => {
+					setWidth(DEFAULT_WIDTH);
+					persistWidth(DEFAULT_WIDTH);
+				}}
+				className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize transition-colors hover:bg-border/60"
+			/>
 			<div className="flex items-center justify-between border-b border-border/60 px-4 py-2.5">
 				<div>
 					<div className="text-xs uppercase tracking-widest text-muted-foreground">Quick ask</div>
@@ -340,7 +423,15 @@ export function QuickAskPanel({ ask }: { ask: QuickAsk }) {
 				</div>
 			</div>
 
-			<div ref={listRef} data-testid="quick-ask-thread" className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+			<div
+				ref={listRef}
+				data-testid="quick-ask-thread"
+				{...{ [SCOPE_ATTR]: "" }}
+				onContextMenu={readAloud?.onContextMenu}
+				onMouseDown={readAloud?.onMouseDown}
+				onMouseUp={readAloud?.onMouseUp}
+				className="min-h-0 flex-1 overflow-y-auto py-3 pr-4 pl-8"
+			>
 				{ask.thread.length === 0 ? (
 					<div className="mt-8 text-center text-xs leading-relaxed text-muted-foreground/70">
 						Ask anything about this session.
@@ -359,7 +450,14 @@ export function QuickAskPanel({ ask }: { ask: QuickAsk }) {
 								{e.images > 0 && <div className="mb-1 text-xs text-muted-foreground">[{e.images} screenshot{e.images > 1 ? "s" : ""}]</div>}
 								<div className="whitespace-pre-wrap">{e.question}</div>
 							</div>
-							{e.answer && <MessageResponse className="text-sm">{e.answer}</MessageResponse>}
+							{e.answer && (
+								<div {...{ [ANSWER_ATTR]: `qa-${entryKey(e, i)}` }} className="group relative">
+									{readAloud && <AnswerPlayButton answerId={`qa-${entryKey(e, i)}`} readAloud={readAloud} />}
+									<div className="lh-source-passage" {...{ [PART_ATTR]: `qa:${entryKey(e, i)}` }}>
+										<MessageResponse className="text-sm">{e.answer}</MessageResponse>
+									</div>
+								</div>
+							)}
 							{e.error && <div className="mt-1 text-xs text-destructive">{e.error}</div>}
 							{!e.answer && !e.error && i === ask.thread.length - 1 && ask.busy && (
 								<span className="inline-block size-3.5 animate-spin rounded-full border border-current border-b-2 text-muted-foreground" />
