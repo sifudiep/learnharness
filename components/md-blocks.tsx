@@ -283,11 +283,10 @@ export function MarkdownCode(props: ComponentProps<"code"> & ExtraProps) {
 // ─── Key-idea callouts (the Streamdown `blockquote` override) ────────────────
 
 /** GitHub-style alert markers — the syntax the models already know from a
- *  million READMEs. The PROMPT teaches only [!IMPORTANT] (one emphasis
- *  device, one meaning: load-bearing); the renderer accepts all five and
- *  boxes them identically — a stray [!NOTE] still meant "this deserves
- *  emphasis", and a literal marker line must never leak as text (owner
- *  design, callout round 2026-10-07). */
+ *  million READMEs. The renderer accepts all five; since the color round
+ *  (owner, 2026-11-04) the kind picks a faint tint — IMPORTANT yellow, TIP
+ *  green (good), WARNING/CAUTION red (bad), NOTE the plain outline — and a
+ *  literal marker line must never leak as text (callout round 2026-10-07). */
 const ALERT_MARKER_RE = /^\[!(note|tip|important|warning|caution)\][ \t]*(?:\n|$)/i;
 
 export interface ParsedAlert {
@@ -347,6 +346,17 @@ export function parseAlertMarker(children: ReactNode): ParsedAlert | null {
  *  stroke, NO background, NO label, NO icon — just the outline. The box
  *  hugs its text (width: fit-content, capped at the column) instead of
  *  stretching full-width into empty space. */
+/** The color code (owner, 2026-11-04 — "slight, subtle but effective"):
+ *  a faint tint + a softened stroke per kind; NOTE keeps the plain outline.
+ *  Yellow = important, green = good, red = bad — the chart's green/red. */
+const CALLOUT_TONE: Record<string, string> = {
+	important: "border-yellow-400/45 bg-yellow-400/[0.06]",
+	tip: "border-green-500/45 bg-green-500/[0.06]",
+	warning: "border-red-500/45 bg-red-500/[0.06]",
+	caution: "border-red-500/45 bg-red-500/[0.06]",
+	note: "border-foreground/70",
+};
+
 export function MarkdownBlockquote(props: ComponentProps<"blockquote"> & ExtraProps) {
 	const { children, node, ...rest } = props;
 	const alert = parseAlertMarker(children);
@@ -369,7 +379,7 @@ export function MarkdownBlockquote(props: ComponentProps<"blockquote"> & ExtraPr
 		<div
 			data-testid="md-callout"
 			data-alert-kind={alert.kind}
-			className="my-4 w-fit max-w-full border border-white px-4 py-3 [&> :first-child]:mt-0 [&> :last-child]:mb-0"
+			className={cn("my-4 w-fit max-w-full border px-4 py-3 [&> :first-child]:mt-0 [&> :last-child]:mb-0", CALLOUT_TONE[alert.kind] ?? CALLOUT_TONE.note)}
 		>
 			{alert.children}
 		</div>

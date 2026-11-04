@@ -176,21 +176,24 @@ describe("mermaid expand — the context seam", () => {
 });
 
 describe("md-blocks — key-idea callouts (GitHub alerts, owner round 2026-10-07)", () => {
-	it("an [!IMPORTANT] callout renders as the sharp white-outline box, marker never leaks", () => {
+	it("an [!IMPORTANT] callout renders as the sharp, faintly yellow box, marker never leaks", () => {
 		const html = render("> [!IMPORTANT]\n> ALL X is done through Y.");
 		assert.ok(html.includes('data-testid="md-callout"'), "the callout box mounts");
 		assert.ok(html.includes('data-alert-kind="important"'), "the kind is recorded");
 		assert.match(html, /ALL X is done through Y\./, "the prose survives");
 		assert.ok(!html.includes("[!IMPORTANT]"), "the marker line never leaks as text");
-		// The owner's minimal law: sharp corners (no rounded), white stroke,
-		// no background, no label, no icon — and the box hugs its text.
-		assert.match(html, /border-white/, "white stroke");
+		// The owner's minimal law (2026-10-07): sharp corners, no label, no
+		// icon, the box hugs its text. The color round (owner, 2026-11-04)
+		// replaced the white stroke + no background with a FAINT tint:
+		// important = yellow.
+		assert.match(html, /border-yellow-400\/45/, "a softened yellow stroke");
+		assert.match(html, /bg-yellow-400\/\[0\.06\]/, "a faint yellow wash — subtle, not a fill");
 		assert.match(html, /w-fit/, "width: fit-content — the hug");
 		assert.ok(!html.includes("rounded"), "sharp corners — no rounding anywhere");
-		assert.ok(!html.includes("bg-card") && !html.includes("bg-background"), "transparent — no background");
+		assert.ok(!html.includes("bg-card") && !html.includes("bg-background"), "never an opaque card");
 	});
 
-	it("all five GitHub markers box identically — one device, one meaning", () => {
+	it("all five GitHub markers box (the tint differs by kind — tests/chart-spec color pins)", () => {
 		for (const kind of ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"]) {
 			const html = render(`> [!${kind}]\n> Load-bearing words.`);
 			assert.ok(html.includes('data-testid="md-callout"'), `${kind} boxes`);

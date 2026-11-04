@@ -83,6 +83,8 @@ export * from "./chart-spec.ts";
 export * from "./calc.ts";
 // quick-ask.ts: the side-question channel — request shape + compact session context (pure).
 export * from "./quick-ask.ts";
+// text-marks.ts: inline color marks (==…==) — the shared grammar (pure).
+export * from "./text-marks.ts";
 // math-speech.ts: equations → spoken words for read-aloud (speech-rule-engine, lazy-loaded).
 export * from "./math-speech.ts";
 export * from "./coverage.ts";

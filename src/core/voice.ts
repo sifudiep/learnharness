@@ -21,6 +21,7 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 import { readContentSpans } from "./content-reader.ts";
 import { EQUATION_WORD, mathToSpeech } from "./math-speech.ts";
 import { normalizeQuizType } from "./question-core.ts";
+import { stripMarks } from "./text-marks.ts";
 
 export interface AuraVoice {
 	/** The Deepgram model id (the `model` query param). */
@@ -169,7 +170,8 @@ export function speakableText(markdown: string): string {
 	const replaced = readContentSpans(markdown.replace(ALERT_MARKER, ""))
 		// A display block on its own lines keeps its surrounding blank lines
 		// in the prose spans, so the words land as their own block anyway.
-		.map((s) => (s.kind === "math" ? `${math.push(mathToSpeech(s.body)) - 1}` : s.raw))
+		// Prose drops the ==color mark== syntax (the words stay); code keeps it.
+		.map((s) => (s.kind === "math" ? `${math.push(mathToSpeech(s.body)) - 1}` : s.kind === "prose" ? stripMarks(s.raw) : s.raw))
 		.join("");
 	const unslot = (text: string) => text.replace(MATH_SLOT, (_, i: string) => math[Number(i)] ?? EQUATION_WORD);
 	const blocks: string[] = [];

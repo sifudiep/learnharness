@@ -29,6 +29,7 @@ import {
   useState,
 } from "react";
 import remarkBreaks from "remark-breaks";
+import remarkMarks from "@/components/md-marks";
 import {
   Streamdown,
   type PluginConfig,
@@ -349,11 +350,14 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 export const streamdownPlugins = {
   cjk: {
     ...cjk,
-    remarkPluginsAfter: [...cjk.remarkPluginsAfter, remarkBreaks],
+    // remarkMarks: inline color marks ==…== / ==+…== / ==-…== (2026-11-04).
+    remarkPluginsAfter: [...cjk.remarkPluginsAfter, remarkBreaks, remarkMarks],
   },
   code,
   math: createMathPlugin({ singleDollarTextMath: true }),
 } as unknown as PluginConfig;
+
+const MARK_TAGS = { mark: ["className", "class", "data-tone", "dataTone"] };
 
 export const MessageResponse = memo(
   ({ className, children, ...props }: MessageResponseProps) => {
@@ -375,6 +379,8 @@ export const MessageResponse = memo(
         )}
         components={mdComponents}
         plugins={streamdownPlugins}
+        // The color marks' <mark> (md-marks.ts) must survive sanitization.
+        allowedTags={MARK_TAGS}
         {...props}
       >
         {content}

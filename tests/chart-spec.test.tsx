@@ -122,3 +122,27 @@ describe("expand to full screen (owner, 2026-11-04)", () => {
 		assert.doesNotMatch(html, /md-chart-fullscreen/, "full screen opens only on demand");
 	});
 });
+
+describe("color marks (owner, 2026-11-04 — subtle but effective)", () => {
+	it("==key==, ==+good==, ==-bad== render as tinted marks; code and math never match", () => {
+		const html = renderToStaticMarkup(
+			<MessageResponse>{"A ==protected low== holds; ==+buy the retest== but ==-never chase==. Code: `a==b==c` and $x==y$."}</MessageResponse>,
+		);
+		assert.match(html, /<mark class="lh-mark" data-tone="key">protected low<\/mark>/);
+		assert.match(html, /<mark class="lh-mark" data-tone="good">buy the retest<\/mark>/);
+		assert.match(html, /<mark class="lh-mark" data-tone="bad">never chase<\/mark>/);
+		assert.equal((html.match(/<mark /g) ?? []).length, 3, "inline code and math stay literal");
+	});
+
+	it("callouts tint by kind: important yellow, tip green, warning red, note plain", () => {
+		const kinds = { IMPORTANT: "yellow", TIP: "green", WARNING: "red", NOTE: "foreground" };
+		for (const [kind, color] of Object.entries(kinds)) {
+			const html = renderToStaticMarkup(<MessageResponse>{`> [!${kind}]\n> A load-bearing idea.`}</MessageResponse>);
+			assert.match(html, new RegExp(`data-alert-kind="${kind.toLowerCase()}"[^>]*border-${color}`), kind);
+		}
+	});
+
+	it("read-aloud speaks the marked words, not the markers", () => {
+		assert.equal(speakableText("A ==protected low== holds and ==-never chase==."), "A protected low holds and never chase.");
+	});
+});
