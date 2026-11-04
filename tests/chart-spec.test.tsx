@@ -114,3 +114,11 @@ describe("the answer dialog pins the turn's chart (owner, 2026-11-04)", () => {
 		assert.doesNotMatch(plain, /dock-chart/);
 	});
 });
+
+describe("expand to full screen (owner, 2026-11-04)", () => {
+	it("every rendered chart carries the expand button", () => {
+		const html = renderToStaticMarkup(<MessageResponse>{"```chart\n" + JSON.stringify({ bars: [BAR] }) + "\n```"}</MessageResponse>);
+		assert.match(html, /data-testid="md-chart-expand"/);
+		assert.doesNotMatch(html, /md-chart-fullscreen/, "full screen opens only on demand");
+	});
+});

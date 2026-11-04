@@ -11,18 +11,21 @@
  *   with no weekend gaps.
  * - Levels are price lines (label on the axis), marks are arrows at a
  *   bar's high/low, lines are two-point line series (trendlines).
- * - The mouse wheel stays the transcript's (no wheel zoom/scroll — it
- *   would hijack page scrolling); drag pans, pinch and axis-drag zoom,
- *   double-click the axis to reset.
+ * - Inline, the mouse wheel stays the transcript's; ⌘/Ctrl + wheel (and
+ *   pinch) zooms, drag pans, axis-drag stretches, double-click an axis
+ *   resets. The expand button opens a full-screen view with TradingView
+ *   navigation (wheel zoom, zoom out into empty space, +/−/reset).
  * - Colors follow the app theme tokens and re-apply on a theme flip.
  */
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { MaximizeIcon, RotateCcwIcon, XIcon, ZoomInIcon, ZoomOutIcon } from "lucide-react";
 import { parseChartSpec, type ChartBar, type ChartLineStyle, type ChartSpec, type ChartTone } from "@/src/core";
 
 const DAY = 86_400;
 const HEIGHT = 320;
-/** Candle pitch cap: a short series stays readable candles (not slabs) —
+/** Candle pitch at the initial fit: a short series stays readable candles (not slabs) —
  *  the chart shrinks to fit its bars instead of stretching them. */
 const MAX_BAR_SPACING = 30;
 const PRICE_SCALE_ROOM = 90;
@@ -106,19 +109,58 @@ function ChartError({ error, source }: { error: string; source: string }) {
 	);
 }
 
-function ChartCanvas({ spec, corner, height }: { spec: ChartSpec; corner?: ReactNode; height: number }) {
-	const holder = useRef<HTMLDivElement>(null);
-	const last = spec.bars[spec.bars.length - 1]!;
-	const [hovered, setHovered] = useState<ChartBar>(last);
+type Mode = "inline" | "full";
+type ChartApi = import("lightweight-charts").IChartApi;
 
+/** Zoom the time axis by `factor` (<1 in, >1 out) around a logical anchor. */
+function zoomBy(chart: ChartApi, factor: number, anchor?: number): void {
+	const ts = chart.timeScale();
+	const r = ts.getVisibleLogicalRange();
+	if (!r) return;
+	const c = anchor ?? (r.from + r.to) / 2;
+	ts.setVisibleLogicalRange({ from: c - (c - r.from) * factor, to: c + (r.to - c) * factor });
+}
+
+function panBy(chart: ChartApi, share: number): void {
+	const ts = chart.timeScale();
+	const r = ts.getVisibleLogicalRange();
+	if (!r) return;
+	const d = (r.to - r.from) * share;
+	ts.setVisibleLogicalRange({ from: r.from + d, to: r.to + d });
+}
+
+function resetView(chart: ChartApi): void {
+	chart.timeScale().fitContent();
+	chart.timeScale().applyOptions({ rightOffset: RIGHT_ROOM }); // fitContent zeroes it
+	chart.priceScale("right").applyOptions({ autoScale: true });
+}
+
+/**
+ * Draw the spec into `holder` — one routine for both modes:
+ * - inline (the conversation, the answer dialog): the plain wheel stays the
+ *   page's; ⌘/Ctrl + wheel (and the trackpad pinch, which arrives as
+ *   Ctrl + wheel) zooms around the pointer (owner, 2026-11-04).
+ * - full (the expanded view): TradingView-style — the wheel zooms, drag
+ *   pans, axis drags stretch, and the view may zoom out past the data
+ *   into empty space.
+ */
+function useChart(
+	holder: React.RefObject<HTMLDivElement | null>,
+	spec: ChartSpec,
+	mode: Mode,
+	onHover: (bar: ChartBar) => void,
+): React.RefObject<ChartApi | null> {
+	const api = useRef<ChartApi | null>(null);
+	const hoverRef = useRef(onHover);
+	hoverRef.current = onHover;
 	useEffect(() => {
-		setHovered(spec.bars[spec.bars.length - 1]!);
 		const el = holder.current;
 		if (!el) return;
 		let disposed = false;
 		let cleanup = () => {};
 		void import("lightweight-charts").then((lc) => {
 			if (disposed) return;
+			const full = mode === "full";
 			const theme = readTheme();
 			const labelOf = (time: unknown) => spec.bars[Math.round(Number(time) / DAY) - 1]?.t ?? "";
 			const lineStyle = (s: ChartLineStyle) =>
@@ -139,15 +181,16 @@ function ChartCanvas({ spec, corner, height }: { spec: ChartSpec; corner?: React
 				timeScale: {
 					borderColor: theme.grid,
 					tickMarkFormatter: (time: unknown) => labelOf(time),
-					fixLeftEdge: true,
+					// Inline stays on the data; full screen may wander into empty space.
+					fixLeftEdge: !full,
 					rightOffset: RIGHT_ROOM,
-					maxBarSpacing: MAX_BAR_SPACING,
 				},
 				localization: { timeFormatter: (time: unknown) => labelOf(time), priceFormatter: formatPrice },
 				crosshair: { mode: lc.CrosshairMode.Normal },
-				handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
-				handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: true, axisDoubleClickReset: true },
+				handleScroll: { mouseWheel: full, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: full },
+				handleScale: { mouseWheel: full, pinch: true, axisPressedMouseMove: true, axisDoubleClickReset: true },
 			});
+			api.current = chart;
 			const candles = chart.addSeries(lc.CandlestickSeries, {
 				upColor: TONE_COLORS.up,
 				downColor: TONE_COLORS.down,
@@ -203,14 +246,22 @@ function ChartCanvas({ spec, corner, height }: { spec: ChartSpec; corner?: React
 					]);
 				}
 			}
-			chart.timeScale().fitContent();
-			chart.timeScale().applyOptions({ rightOffset: RIGHT_ROOM }); // fitContent zeroes it
+			resetView(chart);
 			// The OHLC legend follows the crosshair; off the chart it shows the last bar.
 			chart.subscribeCrosshairMove((param) => {
 				const i = param.time === undefined ? spec.bars.length - 1 : Math.round(Number(param.time) / DAY) - 1;
 				const bar = spec.bars[i];
-				if (bar) setHovered(bar);
+				if (bar) hoverRef.current(bar);
 			});
+			// Inline: ⌘/Ctrl + wheel zooms around the pointer; the plain wheel
+			// scrolls the page. (Non-passive so the browser's page zoom stays out.)
+			const onWheel = (e: WheelEvent) => {
+				if (full || !(e.ctrlKey || e.metaKey)) return;
+				e.preventDefault();
+				const x = e.clientX - el.getBoundingClientRect().left;
+				zoomBy(chart, Math.exp(e.deltaY * 0.0025), chart.timeScale().coordinateToLogical(x) ?? undefined);
+			};
+			el.addEventListener("wheel", onWheel, { passive: false });
 			// Theme flips (the .dark class / appearance settings) re-color the chart.
 			const observer = new MutationObserver(() => {
 				const t = readTheme();
@@ -223,7 +274,9 @@ function ChartCanvas({ spec, corner, height }: { spec: ChartSpec; corner?: React
 			});
 			observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme"] });
 			cleanup = () => {
+				el.removeEventListener("wheel", onWheel);
 				observer.disconnect();
+				api.current = null;
 				chart.remove();
 			};
 		});
@@ -231,26 +284,127 @@ function ChartCanvas({ spec, corner, height }: { spec: ChartSpec; corner?: React
 			disposed = true;
 			cleanup();
 		};
-	}, [spec]);
+	}, [holder, spec, mode]);
+	return api;
+}
 
-	const up = hovered.c >= hovered.o;
+function Legend({ spec, bar }: { spec: ChartSpec; bar: ChartBar }) {
+	const up = bar.c >= bar.o;
+	return (
+		<div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5 font-mono text-xs">
+			{spec.title && <span className="font-ui text-sm text-foreground">{spec.title}</span>}
+			<span className="text-muted-foreground" data-testid="md-chart-legend">
+				{bar.t} <span className="opacity-70">O</span> {formatPrice(bar.o)} <span className="opacity-70">H</span>{" "}
+				{formatPrice(bar.h)} <span className="opacity-70">L</span> {formatPrice(bar.l)}{" "}
+				<span className="opacity-70">C</span>{" "}
+				<span style={{ color: up ? TONE_COLORS.up : TONE_COLORS.down }}>{formatPrice(bar.c)}</span>
+			</span>
+		</div>
+	);
+}
+
+const ICON_BUTTON =
+	"flex size-6 items-center justify-center rounded-md text-muted-foreground/80 transition-colors hover:bg-accent hover:text-foreground";
+
+function ChartCanvas({ spec, corner, height }: { spec: ChartSpec; corner?: ReactNode; height: number }) {
+	const holder = useRef<HTMLDivElement>(null);
+	const [hovered, setHovered] = useState<ChartBar>(spec.bars[spec.bars.length - 1]!);
+	const [expanded, setExpanded] = useState(false);
+	useEffect(() => setHovered(spec.bars[spec.bars.length - 1]!), [spec]);
+	useChart(holder, spec, "inline", setHovered);
+
 	return (
 		<div data-testid="md-chart" data-lh-chart="" className="group/md relative my-4">
-			<div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 pr-8 font-mono text-xs">
-				{spec.title && <span className="font-ui text-sm text-foreground">{spec.title}</span>}
-				<span className="text-muted-foreground" data-testid="md-chart-legend">
-					{hovered.t} <span className="opacity-70">O</span> {formatPrice(hovered.o)} <span className="opacity-70">H</span>{" "}
-					{formatPrice(hovered.h)} <span className="opacity-70">L</span> {formatPrice(hovered.l)}{" "}
-					<span className="opacity-70">C</span>{" "}
-					<span style={{ color: up ? TONE_COLORS.up : TONE_COLORS.down }}>{formatPrice(hovered.c)}</span>
-				</span>
+			<div className="mb-1 pr-16">
+				<Legend spec={spec} bar={hovered} />
 			</div>
 			<div
 				ref={holder}
 				className="w-full"
+				title="⌘/Ctrl + scroll to zoom · drag to pan"
 				style={{ height, maxWidth: (spec.bars.length + RIGHT_ROOM) * MAX_BAR_SPACING + PRICE_SCALE_ROOM }}
 			/>
-			{corner && <div className="absolute top-0 right-0">{corner}</div>}
+			<div className="absolute top-0 right-0 flex items-start gap-0.5">
+				{corner}
+				<button
+					type="button"
+					data-testid="md-chart-expand"
+					aria-label="Open chart full screen"
+					title="Full screen"
+					onClick={() => setExpanded(true)}
+					className={ICON_BUTTON}
+				>
+					<MaximizeIcon className="size-3.5" />
+				</button>
+			</div>
+			{expanded && <ChartFullscreen spec={spec} onClose={() => setExpanded(false)} />}
 		</div>
+	);
+}
+
+/** The expanded chart (owner, 2026-11-04): the whole window, TradingView
+ *  navigation. Keys while open: + / − zoom, 0 resets, ← / → pan, Esc
+ *  closes — claimed in the capture phase so the app's shortcuts (the
+ *  reading cursor's arrows, the Esc chain) stay out. */
+function ChartFullscreen({ spec, onClose }: { spec: ChartSpec; onClose: () => void }) {
+	const holder = useRef<HTMLDivElement>(null);
+	const [hovered, setHovered] = useState<ChartBar>(spec.bars[spec.bars.length - 1]!);
+	const api = useChart(holder, spec, "full", setHovered);
+
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (e.metaKey || e.ctrlKey || e.altKey) return;
+			const chart = api.current;
+			let used = true;
+			if (e.key === "Escape") onClose();
+			else if (!chart) used = false;
+			else if (e.key === "+" || e.key === "=") zoomBy(chart, 0.8);
+			else if (e.key === "-" || e.key === "_") zoomBy(chart, 1.25);
+			else if (e.key === "0") resetView(chart);
+			else if (e.key === "ArrowLeft") panBy(chart, -0.1);
+			else if (e.key === "ArrowRight") panBy(chart, 0.1);
+			else used = false;
+			if (used) {
+				e.preventDefault();
+				e.stopPropagation();
+			}
+		};
+		window.addEventListener("keydown", onKey, true);
+		return () => window.removeEventListener("keydown", onKey, true);
+	}, [api, onClose]);
+
+	return createPortal(
+		<div
+			data-testid="md-chart-fullscreen"
+			data-lh-chart=""
+			role="dialog"
+			aria-label={spec.title ?? "Chart"}
+			className="fixed inset-0 z-[60] flex flex-col bg-background p-4"
+		>
+			<div className="mb-2 flex items-center gap-3">
+				<div className="min-w-0 flex-1">
+					<Legend spec={spec} bar={hovered} />
+				</div>
+				<div className="flex shrink-0 items-center gap-0.5">
+					<button type="button" aria-label="Zoom in" title="Zoom in (+)" className={ICON_BUTTON} onClick={() => api.current && zoomBy(api.current, 0.8)}>
+						<ZoomInIcon className="size-4" />
+					</button>
+					<button type="button" aria-label="Zoom out" title="Zoom out (−)" className={ICON_BUTTON} onClick={() => api.current && zoomBy(api.current, 1.25)}>
+						<ZoomOutIcon className="size-4" />
+					</button>
+					<button type="button" aria-label="Reset view" title="Reset view (0)" className={ICON_BUTTON} onClick={() => api.current && resetView(api.current)}>
+						<RotateCcwIcon className="size-4" />
+					</button>
+					<button type="button" data-testid="md-chart-close" aria-label="Close full screen" title="Close (Esc)" className={`${ICON_BUTTON} ml-2`} onClick={onClose}>
+						<XIcon className="size-4" />
+					</button>
+				</div>
+			</div>
+			<div ref={holder} className="min-h-0 w-full flex-1" />
+			<div className="mt-1 text-center text-[11px] text-muted-foreground/70">
+				Scroll to zoom · drag to pan · drag an axis to stretch it · double-click an axis to reset · + − 0 ← → · Esc closes
+			</div>
+		</div>,
+		document.body,
 	);
 }
