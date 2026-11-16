@@ -1,0 +1,200 @@
+TAP version 13
+# Subtest: before the engine loads
+    # Subtest: every path falls back to (equation)
+    ok 1 - every path falls back to (equation)
+      ---
+      duration_ms: 5.2985
+      type: 'test'
+      ...
+    1..1
+ok 1 - before the engine loads
+  ---
+  duration_ms: 5.649875
+  type: 'suite'
+  ...
+# Subtest: mathToSpeech — ClearSpeak
+    # Subtest: x^2 + 1 = 0 → x squared plus 1 equals 0
+    ok 1 - x^2 + 1 = 0 → x squared plus 1 equals 0
+      ---
+      duration_ms: 8.017042
+      type: 'test'
+      ...
+    # Subtest: \\frac{1}{3} → one third
+    ok 2 - \\frac{1}{3} → one third
+      ---
+      duration_ms: 1.037292
+      type: 'test'
+      ...
+    # Subtest: \\frac{a}{b} → a over b
+    ok 3 - \\frac{a}{b} → a over b
+      ---
+      duration_ms: 2.859334
+      type: 'test'
+      ...
+    # Subtest: \\sqrt{2} → the square root of 2
+    ok 4 - \\sqrt{2} → the square root of 2
+      ---
+      duration_ms: 0.790042
+      type: 'test'
+      ...
+    # Subtest: \\int_0^1 x\\,dx → the integral from 0 to 1 of x d x
+    ok 5 - \\int_0^1 x\\,dx → the integral from 0 to 1 of x d x
+      ---
+      duration_ms: 3.035583
+      type: 'test'
+      ...
+    # Subtest: f'(x) = 3x^2 → f prime of x equals 3 x squared
+    ok 6 - f'(x) = 3x^2 → f prime of x equals 3 x squared
+      ---
+      duration_ms: 2.776667
+      type: 'test'
+      ...
+    # Subtest: \\sum_{n=1}^{\\infty} a_n → the sum from n equals 1 to infinity of a sub n
+    ok 7 - \\sum_{n=1}^{\\infty} a_n → the sum from n equals 1 to infinity of a sub n
+      ---
+      duration_ms: 1.780125
+      type: 'test'
+      ...
+    # Subtest: x \\leq 3 → x is less than or equal to 3
+    ok 8 - x \\leq 3 → x is less than or equal to 3
+      ---
+      duration_ms: 0.835792
+      type: 'test'
+      ...
+    # Subtest: \\mathbb{R} → the real numbers
+    ok 9 - \\mathbb{R} → the real numbers
+      ---
+      duration_ms: 0.401208
+      type: 'test'
+      ...
+    # Subtest: \\Omega → Omega
+    ok 10 - \\Omega → Omega
+      ---
+      duration_ms: 0.470084
+      type: 'test'
+      ...
+    # Subtest: upright symbols never speak their font (no "normal infinity")
+    ok 11 - upright symbols never speak their font (no "normal infinity")
+      ---
+      duration_ms: 1.0195
+      type: 'test'
+      ...
+    # Subtest: combining accents are dropped from the words
+    ok 12 - combining accents are dropped from the words
+      ---
+      duration_ms: 0.747166
+      type: 'test'
+      ...
+    # Subtest: unreadable or empty TeX falls back to (equation)
+    ok 13 - unreadable or empty TeX falls back to (equation)
+      ---
+      duration_ms: 0.102041
+      type: 'test'
+      ...
+    1..13
+ok 2 - mathToSpeech — ClearSpeak
+  ---
+  duration_ms: 93.077583
+  type: 'suite'
+  ...
+# Subtest: fix-ups
+    # Subtest: implies, in all three spellings
+    ok 1 - implies, in all three spellings
+      ---
+      duration_ms: 3.077084
+      type: 'test'
+      ...
+    # Subtest: limits read as 'the limit as … approaches … of'
+    ok 2 - limits read as 'the limit as … approaches … of'
+      ---
+      duration_ms: 4.252958
+      type: 'test'
+      ...
+    # Subtest: a bar inside P(…) reads 'given'; elsewhere the engine's reading stays
+    ok 3 - a bar inside P(…) reads 'given'; elsewhere the engine's reading stays
+      ---
+      duration_ms: 14.084125
+      type: 'test'
+      ...
+    # Subtest: Delta is Delta, not the triangle glyph
+    ok 4 - Delta is Delta, not the triangle glyph
+      ---
+      duration_ms: 0.500083
+      type: 'test'
+      ...
+    # Subtest: fix-ups leave other TeX untouched
+    ok 5 - fix-ups leave other TeX untouched
+      ---
+      duration_ms: 0.025375
+      type: 'test'
+      ...
+    1..5
+ok 3 - fix-ups
+  ---
+  duration_ms: 22.050208
+  type: 'suite'
+  ...
+# Subtest: both reading paths speak the same words
+    # Subtest: auto-read (markdown) speaks inline, display and legacy math
+    ok 1 - auto-read (markdown) speaks inline, display and legacy math
+      ---
+      duration_ms: 3.186084
+      type: 'test'
+      ...
+    # Subtest: spoken math is never parsed as markdown
+    not ok 2 - spoken math is never parsed as markdown
+      ---
+      duration_ms: 1.433541
+      type: 'test'
+      location: '/Users/mikaeldiep/dev/private_projects/learnharness/.claude/worktrees/math-speech/tests/math-speech.test.ts:113:2'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly equal:
+        + actual - expected
+        
+        + 'Then a asterisk b asterisk c ends.'
+        - 'Then a times b times c ends.'
+                  ^
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 'Then a times b times c ends.'
+      actual: 'Then a asterisk b asterisk c ends.'
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (/Users/mikaeldiep/dev/private_projects/learnharness/.claude/worktrees/math-speech/tests/math-speech.test.ts:114:10)
+        Test.runInAsyncScope (node:async_hooks:227:14)
+        Test.run (node:internal/test_runner/test:1397:25)
+        async Suite.processPendingSubtests (node:internal/test_runner/test:969:7)
+      ...
+    # Subtest: manual reading (rendered KaTeX) matches auto-read word for word
+    ok 3 - manual reading (rendered KaTeX) matches auto-read word for word
+      ---
+      duration_ms: 13.228584
+      type: 'test'
+      ...
+    # Subtest: rendered math without its TeX annotation still falls back
+    ok 4 - rendered math without its TeX annotation still falls back
+      ---
+      duration_ms: 0.186708
+      type: 'test'
+      ...
+    1..4
+not ok 4 - both reading paths speak the same words
+  ---
+  duration_ms: 18.1315
+  type: 'suite'
+  location: '/Users/mikaeldiep/dev/private_projects/learnharness/.claude/worktrees/math-speech/tests/math-speech.test.ts:104:1'
+  failureType: 'subtestsFailed'
+  error: '1 subtest failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+1..4
+# tests 23
+# suites 4
+# pass 22
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 529.44775
